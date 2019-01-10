@@ -20,27 +20,26 @@ func (w *TestWheeler) ListRunner() {
 	fmt.Println("ListRunner")
 }
 
-type PeriodSleepTask struct {
+type PeriodSleepTask2 struct {
 	PeriodicTask
 }
 
-func (p *PeriodSleepTask) Run() (bool, error) {
+func (p *PeriodSleepTask2) Run() (bool, error) {
 	p.RunAt = time.Now()
 	time.Sleep(time.Second * 1)
 	p.Cost = time.Now().Sub(p.RunAt)
 	fmt.Println("PeriodSleepTask run complete", p.ID)
 	return true, nil
 }
-func (p *PeriodSleepTask) Next(Wheeler) bool {
+func (p *PeriodSleepTask2) Next(Wheeler) bool {
 	fmt.Println("run next")
 	return true
 }
-func NewPeriodSleepTask(requestID int64, period time.Duration, end time.Time) *PeriodSleepTask {
-	t := &PeriodSleepTask{}
+func NewPeriodSleepTask2(requestID int64, period time.Duration, end time.Time) *PeriodSleepTask2 {
+	t := &PeriodSleepTask2{}
 
 	t.ID = requestID
 	t.Name = "PeriodSleepTask"
-	t.TaskType = PeriodTask
 	//interval, _ := time.ParseDuration("3s")
 	t.Interval = period
 	t.ToRunAfter = period
@@ -62,7 +61,7 @@ func TestWorkerPool(t *testing.T) {
 	tasks := make([]Runner, len(periodTasks))
 	for idx, p := range periodTasks {
 		interval, _ := time.ParseDuration(p)
-		tasks[idx] = NewPeriodSleepTask(int64(idx), interval, time.Now().Add(duration))
+		tasks[idx] = NewPeriodSleepTask2(int64(idx), interval, time.Now().Add(duration))
 	}
 	for i := 0; i < len(periodTasks); i++ {
 		pool.Execute(tasks[i])

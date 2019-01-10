@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	Created = iota
+	Created   = iota
 	Queued
 	Completed
 )
@@ -30,7 +30,8 @@ type Runner interface {
 	Run() (bool, error)
 	// 执行完成之后的操作，如果是一次性任务，直接返回，如果是周期性任务，启动新goroutine执行，并再次添加到wheeler中，
 	Next(wheel Wheeler) bool
-	// 预计执行runner的时刻
+	//预计执行runner的时刻
+	GetToRunAt() time.Time
 	GetToRunAfter() time.Duration
 	// 真正运行的时间
 	GetRunAt() time.Time
@@ -47,23 +48,23 @@ type Runner interface {
 // 任务的基本属性
 type Task struct {
 	//id，标识一个明确的请求，用于追踪
-	ID int64
-	// 类型
-	TaskType uint8
+	ID int64  `json:"id,string"`
 	// 名称，用于打印
-	Name string
+	Name string `json:"name"`
 	// 预计第一次运行时刻
-	ToRunAfter time.Duration
+	ToRunAt time.Time `json:"torunat,int64"`
+	// 收到之后判断
+	ToRunAfter time.Duration `json:"torunafter"`
 	// 耗时，如果还没有执行 为0
-	Cost time.Duration
+	Cost time.Duration `json:"cost"`
 	// 是否已经运行完成, 可以使用sync.Atomic来修改
-	Done uint8
+	Done uint8 `json:"done"`
 	// 错误描述
-	err error
+	err error `json:"-"`
 	// timeout 时间
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout,int64"`
 	// 实际运行的时间
-	RunAt time.Time
+	RunAt time.Time `json:"runat,int64"`
 }
 
 //Runner.Result
@@ -79,9 +80,10 @@ func (t *Task) SetError(err error) {
 func (t *Task) GetToRunAfter() time.Duration {
 	return t.ToRunAfter
 }
-func (t *Task) GetType() uint8 {
-	return t.TaskType
+func (t *Task) GetToRunAt() time.Time {
+	return t.ToRunAt
 }
+
 func (t *Task) GetName() string {
 	return t.Name
 }
@@ -117,12 +119,12 @@ func (t *PeriodicTask) ToJson() string {
 type Creator func(kv map[string]interface{}) Runner
 
 type Factory interface {
-	Register(typeID int64, creator Creator)
+	Register(name string, creator Creator)
 	Create(kv map[string]interface{}) Runner
 }
 
 type taskFactory struct {
-	creatorMap map[int64]Creator
+	creatorMap map[string]Creator
 }
 
 var once sync.Once
@@ -131,25 +133,23 @@ var pFactory *taskFactory
 func NewTaskFactory() Factory {
 	once.Do(func() {
 		pFactory = &taskFactory{
-			creatorMap: make(map[int64]Creator),
+			creatorMap: make(map[string]Creator),
 		}
 	})
 	return pFactory
 }
-
 // 如果typeID重复，覆盖已有的creator
-func (f *taskFactory) Register(typeID int64, creator Creator) {
-	if _, existed := f.creatorMap[typeID]; existed {
+func (f *taskFactory) Register(name string, creator Creator) {
+	if _, existed := f.creatorMap[name]; existed {
 		// warning
 	}
-	f.creatorMap[typeID] = creator
+	f.creatorMap[name] = creator
 }
-
 func (f *taskFactory) Create(kv map[string]interface{}) Runner {
-	v, ok := kv["type"]
+	v, ok := kv["Name"]
 	if ok {
-		typeID := v.(int64)
-		if creator, existed := f.creatorMap[typeID]; existed {
+		name := v.(string)
+		if creator, existed := f.creatorMap[name]; existed {
 			return creator(kv)
 		} else {
 			return nil

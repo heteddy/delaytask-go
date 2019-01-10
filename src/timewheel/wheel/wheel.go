@@ -5,7 +5,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"math"
 	"time"
-	"timewheel/logger"
+	"wheelLogger"
 	"timewheel/wheelTicker"
 )
 
@@ -82,9 +82,6 @@ func (n *Node) remove(t *TaskNode) {
 
 // 遍历当前的list
 func (n *Node) walk() {
-	logger.Logger.WithFields(logrus.Fields{
-		"node-length": n.taskNodes.Len(),
-	}).Infoln("go through task node")
 	for node := n.taskNodes.Front(); node != nil; {
 		// 执行
 		if task, ok := node.Value.(*TaskNode); ok {
@@ -100,7 +97,7 @@ func (n *Node) walk() {
 				node = node.Next()
 			}
 		} else {
-			logger.Logger.WithFields(logrus.Fields{}).Errorln("error convert task")
+			wheelLogger.Logger.WithFields(logrus.Fields{}).Errorln("error convert task")
 			node = node.Next()
 		}
 		// 下一个
@@ -155,16 +152,13 @@ func (w *Wheel) TaskCount() int64 {
 }
 
 func (w *Wheel) Tick() {
-	logger.Logger.WithFields(logrus.Fields{
-		"now": time.Now().Format("2006-01-02 15:04:05.999999"),
-	}).Infoln("ticks")
 	w.index = (w.index + 1) % w.count
 	w.slots[w.index].walk()
 }
 
 func (w *Wheel) GetTaskInfo() string {
 	for k, v := range w.runnerMap {
-		logger.Logger.WithFields(logrus.Fields{
+		wheelLogger.Logger.WithFields(logrus.Fields{
 			"taskID":     k,
 			"toRunAfter": v.task.GetToRunAfter(),
 		}).Infoln("GetTaskInfo")
@@ -177,10 +171,10 @@ func (w *Wheel) GetTaskInfo() string {
 */
 func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 
-	toRun := runner.GetToRunAfter()
+	toRunAfter := runner.GetToRunAfter()
 	index := w.index
 	switch {
-	case toRun < w.ticks:
+	case toRunAfter < w.ticks: // 执行时间 < 一个slot时间，直接插入下一个slot
 		taskNode := &TaskNode{runner,
 			0,
 			pool,
@@ -191,43 +185,65 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			taskNode,
 			idx,
 		}
-		logger.Logger.WithFields(logrus.Fields{
+		wheelLogger.Logger.WithFields(logrus.Fields{
 			"insert-index": idx,
 			"currentIdx":   index,
 			"round":        taskNode.round,
-			"toRunAfter":   toRun,
+			"toRunAfter":   toRunAfter,
 			"taskID":       taskNode.GetID(),
 		}).Infoln("delta < w.ring.ticks")
-	case toRun > w.ticks:
+	case toRunAfter > w.ticks:
 		ticks := int64(w.ticks)
 		roundDuration := int64(w.count) * ticks
 
 		// 先计算需要多少轮
-		rounds := int64(toRun) / roundDuration
-		// 然后是
-		delay := round(float64(int64(toRun)%roundDuration) / float64(ticks))
+		rounds := int64(toRunAfter) / roundDuration
+		// 2. 计算需要的偏移
+		offset := round(float64(int64(toRunAfter)%roundDuration) / float64(ticks))
 
+		var idx int64
+		if index == -1 {
+			// wheel还没有开始转动，index == -1，如果保持-1，则后面的slots[idx]会报错
+			idx = int64(int64(index+1)+offset) % int64(w.count)
+		} else {
+			// index != -1, 说明开始转动，正常逻辑就是直接加上当前的偏移
+			idx = int64(int64(index)+offset) % int64(w.count)
+		}
+		// 临界条件，如果恰好是整数圈，调整rounds数
+		if offset == 0 {
+			if rounds > 0 {
+				rounds -= 1
+			} else {
+				wheelLogger.Logger.WithFields(logrus.Fields{
+					"insert-index": idx,
+					"currentIdx":   index,
+					"round":        rounds,
+					"offset":       offset,
+					"toRunAfter":   toRunAfter,
+					"taskID":       runner.GetID(),
+				}).Errorln("offset == 0 and rounds == 0!!!")
+			}
+		}
 		taskNode := &TaskNode{runner,
 			uint64(rounds),
 			pool,
 		}
-		idx := int64(int64(index)+delay) % int64(w.count)
-
 		w.slots[idx].insert(taskNode)
 		w.runnerMap[runner.GetID()] = &runnerInfo{
 			taskNode,
 			idx,
 		}
-		logger.Logger.WithFields(logrus.Fields{
+		wheelLogger.Logger.WithFields(logrus.Fields{
 			"insert-index": idx,
 			"currentIdx":   index,
 			"round":        taskNode.round,
-			"toRunAfter":   toRun,
+			"offset":       offset,
+			"toRunAfter":   toRunAfter,
 			"taskID":       taskNode.GetID(),
 		}).Infoln("delta > w.ring.ticks")
 
 	default:
-		logger.Logger.WithFields(logrus.Fields{}).Infoln("not added?")
+		wheelLogger.Logger.WithFields(logrus.Fields{}).Infoln("not added?")
 	}
 }
 
@@ -294,7 +310,7 @@ func NewTimeWheel(duration string, slot int, worker int) *TimeWheeler {
 		panic(err)
 		return nil
 	}
-	logger.Logger.WithFields(logrus.Fields{
+	wheelLogger.Logger.WithFields(logrus.Fields{
 		duration: tickerDuration,
 	})
 	// 创建一个timer
@@ -346,7 +362,7 @@ func (wheel *TimeWheeler) Start() {
 				return
 			}
 		}
-		logger.Logger.WithFields(logrus.Fields{}).Errorln("TimeWheeler exit error")
+		wheelLogger.Logger.WithFields(logrus.Fields{}).Errorln("TimeWheeler exit error")
 	}()
 	wheel.ticker.Start()
 	wheel.pool.Start()

@@ -3,7 +3,7 @@ package wheel
 import (
 	"github.com/sirupsen/logrus"
 	"time"
-	"timewheel/logger"
+	"wheelLogger"
 )
 
 //import (
@@ -52,7 +52,7 @@ func (w *Worker) runTask(t Runner) {
 			case <-time.After(duration):
 				// 打印任务结束当前的任务
 				// 运行超时不再添加
-				logger.Logger.WithFields(logrus.Fields{
+				wheelLogger.Logger.WithFields(logrus.Fields{
 					"start-time":   start.Format("2006-01-02 15:04:05.999999"),
 					"now":          time.Now().Format("2006-01-02 15:04:05.999999"),
 					"taskID":       t.GetID(),

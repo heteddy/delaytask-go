@@ -6,8 +6,7 @@ package wheelTicker
 
 import (
 	"time"
-	"timewheel/logger"
-	"timewheel/observer"
+	"observer"
 )
 
 //var MinInterval time.Duration
@@ -81,7 +80,7 @@ func (t *WheelTimer) Start() {
 				return
 			case <-t.ticker.C:
 				// 发送通知
-				logger.Logger.Infof("\n**** send timer event**********************************\n")
+				//wheelLogger.Logger.Infof("\n**** send timer event**********************************\n")
 				t.Trigger()
 			}
 		}

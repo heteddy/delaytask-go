@@ -20,8 +20,8 @@ func (t *ServicePingTask) Run() (bool, error) {
 		// 生成报警
 		fmt.Println("告警发生")
 	}
-	body,_:=ioutil.ReadAll(resp.Body)
-	fmt.Println("resp", resp.Status,resp.Body,string(body))
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println("resp", resp.Status, resp.Body, string(body))
 	return true, nil
 }
 
@@ -66,7 +66,6 @@ func main() {
 			Task: wheel.Task{
 				ID:         tracer.GetID().Int64(),
 				Name:       "ServicePingTask",
-				TaskType:   1,
 				ToRunAt:    time.Now().Add(runInterval),
 				ToRunAfter: runInterval,
 				Done:       0,
@@ -75,7 +74,7 @@ func main() {
 			Interval: runInterval,
 			EndTime:  time.Now().Add(time.Hour * 24 * 365),
 		},
-		url: "http://101.132.72.222:8080/ping/",
+		url: "http://127.0.0.1:8080/ping/",
 	}
 
 	tw := wheel.NewTimeWheel("1s", 10, 5)

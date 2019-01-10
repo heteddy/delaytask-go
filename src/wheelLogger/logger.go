@@ -1,4 +1,4 @@
-package logger
+package wheelLogger
 
 import (
 	"github.com/sirupsen/logrus"
