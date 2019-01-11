@@ -8,8 +8,10 @@ import (
 	"time"
 	"encoding/json"
 	"github.com/pkg/errors"
-	"strings"
 	"strconv"
+	"timeService"
+	"wheelLogger"
+	"github.com/sirupsen/logrus"
 )
 
 /*
@@ -22,6 +24,7 @@ import (
 type StorageService interface {
 	LoadOngoingTask() ([]string, error)
 	AppendToTaskTable(string) bool
+	GetTaskInfo(tid string) (string, bool)
 	InsertToWaitingQ(string) bool
 	MoveWaitingToOngoingQ(time.Duration) ([]string, error)
 	ChangeTaskToComplete(string, bool)
@@ -33,11 +36,10 @@ type StorageService interface {
 type TaskComingFunc func(channel string, message []byte) bool
 
 type TaskStorageService struct {
-	//client * RedisClient
-	//subscriber *taskSubscriber
 	taskTable          string
 	waitingQ           string
 	ongoingQ           string
+	keepaliveTimerChan chan bool
 	keepalive          time.Duration
 	connection         redis.Conn
 	quitChan           chan bool
@@ -48,16 +50,19 @@ type TaskStorageService struct {
 	remoteTaskCallback TaskComingFunc
 }
 
-
 func (service *TaskStorageService) startKeepAlive() {
 	service.wg.Add(1)
 	go func() {
-		ticker := time.NewTicker(service.keepalive)
+		//
+		//ticker := time.NewTicker(service.keepalive)
 		var err error
 	loop:
 		for err == nil {
 			select {
-			case <-ticker.C:
+			case <-service.keepaliveTimerChan:
+				wheelLogger.Logger.WithFields(logrus.Fields{
+					"time": time.Now(),
+				}).Infoln("keep alive for subscriber!!")
 				service.connection.Send("PING", "")
 				if err = service.connection.Flush(); err != nil {
 				}
@@ -72,7 +77,9 @@ func (service *TaskStorageService) startKeepAlive() {
 		service.wg.Done()
 	}()
 }
-
+func (service *TaskStorageService) EventOccur() {
+	service.keepaliveTimerChan <- true
+}
 func (service *TaskStorageService) startReceive() {
 	service.wg.Add(1)
 	go func() {
@@ -108,17 +115,53 @@ func (service *TaskStorageService) Start() bool {
 func (service *TaskStorageService) Stop() bool {
 	service.subCon.Unsubscribe(service.topic)
 	service.quitChan <- true
-	service.wg.Wait()
+	// 这里关闭可能导致
 
+	service.wg.Wait()
+	timeService.TimerService.GetTimer("1m").Unregister(service)
+	close(service.keepaliveTimerChan)
 	service.subCon.Close()
 	service.connection.Close()
+
 	return true
 }
 func (service *TaskStorageService) LoadOngoingTask() ([]string, error) {
-	result := make([]string, 0)
 	reply, err := service.connection.Do("LRANGE", service.ongoingQ, 0, -1)
 	fmt.Println(reply, err)
-	return result, nil
+
+	switch reply.(type) {
+	case []interface{}:
+		taskIDs := reply.([]interface{})
+		if len(taskIDs) > 0 {
+			args := make([]interface{}, len(taskIDs)+1)
+			args[0] = service.taskTable
+			for idx, idInterface := range taskIDs {
+				args[idx+1] = idInterface
+			}
+			// 获取tasks
+			reply, err := service.connection.Do("HMGET", args)
+			if err != nil {
+				return make([]string, 0), nil
+			}
+			switch reply.(type) {
+			case []interface{}:
+				results := make([]string, len(reply.([]interface{})))
+				if len(results) > 0 {
+					for idx, taskInterface := range reply.([]interface{}) {
+						results[idx] = string(taskInterface.([]byte))
+					}
+				}
+				return results, nil
+			default:
+				return nil, errors.New("find error in task table")
+			}
+		} else {
+			// no ongoing tasks
+			return make([]string, 0), nil
+		}
+	default:
+	}
+	return nil, errors.New("no ongoing tasks")
 }
 func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duration) ([]string, error) {
 	result := make([]string, 0)
@@ -130,35 +173,47 @@ func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duratio
 	reply, err := service.connection.Do("ZRANGEBYSCORE", service.waitingQ, fromSec, toSec)
 	fmt.Println(reply, err)
 	// 2. 移动符合条件的task到ongoingQ
+	switch reply.(type) {
+	case []interface{}:
+		waitingTaskIds := reply.([]interface{})
+		if len(waitingTaskIds) > 0 {
 
+		} else {
+			return make([]string, 0), nil
+		}
+	}
 	// 3. 返回符合条件的task
 	return result, nil
 }
-func (service *TaskStorageService) ChangeTaskToComplete(t string, removeFromTaskTable bool) {
+func (service *TaskStorageService) ChangeTaskToComplete(tid string, removeFromTaskTable bool) {
 	// 1. remove from ongoing task
-	service.connection.Do("LREM", service.ongoingQ, 0, t)
+	reply, err := service.connection.Do("LREM", service.ongoingQ, 0, tid)
+	fmt.Println("ChangeTaskToComplete", reply, err)
 	// 2. 从task table中删除
-
 	if removeFromTaskTable {
-		taskId, ok := service.getTaskID(t)
-		if !ok {
-			// todo: log error
-			return
-		}
-		service.connection.Do("HDEL", service.taskTable, taskId)
+		//taskId, ok := service.getTaskID(t)
+		service.connection.Do("HDEL", service.taskTable, tid)
 	}
 }
 func (service *TaskStorageService) RemoveFromTaskTable(tid int64) bool {
-	service.connection.Do("HDEL", service.taskTable, tid)
+	reply, err := service.connection.Do("HDEL", service.taskTable, tid)
+	if err != nil {
+		return false
+	}
+	fmt.Println("AppendToTaskTable", reply)
 	return true
 }
 func (service *TaskStorageService) InsertToWaitingQ(t string) bool {
 	//只需要把taskid放到 waitingQ中
-	taskId, ok := service.getTaskID(t)
+	toRunAt, ok := service.getTaskToRunAt(t)
 	if !ok {
 		return false
 	}
-	service.connection.Do("ZADD", service.waitingQ, taskId, t)
+	reply, err := service.connection.Do("ZADD", service.waitingQ, toRunAt, t)
+	if err != nil {
+		return false
+	}
+	fmt.Println("AppendToTaskTable", reply)
 	return true
 }
 func (service *TaskStorageService) AppendToTaskTable(t string) bool {
@@ -166,12 +221,32 @@ func (service *TaskStorageService) AppendToTaskTable(t string) bool {
 	if !ok {
 		return false
 	}
-	fmt.Println("AppendToTaskTable")
 	// 插入到task table中h
-	reply, err:= service.connection.Do("HSET", service.taskTable, taskId, t)
-	fmt.Println("reply is",reply)
-	fmt.Println("error is",err)
+	reply, err := service.connection.Do("HSET", service.taskTable, taskId, t)
+	if err != nil {
+		return false
+	}
+	fmt.Println("AppendToTaskTable", reply)
 	return true
+}
+func (service *TaskStorageService) GetTaskInfo(tid string) (string, bool) {
+	fmt.Println("GetTaskInfo,tid", tid)
+	// 插入到task table中h
+	reply, err := service.connection.Do("HGET", service.taskTable, tid)
+	//fmt.Println("reply is", reply)
+	//fmt.Println(string(reply.([]byte)))
+	//fmt.Println("error is", err)
+	if err != nil {
+		return "", false
+	}
+	switch reply.(type) {
+	case interface{}:
+		result := string(reply.([]byte))
+		return result, true
+	default:
+		return "", false
+	}
+
 }
 
 func (service *TaskStorageService) deserialize(t string) (map[string]interface{}, error) {
@@ -190,14 +265,14 @@ func (service *TaskStorageService) getTaskID(t string) (taskid int64, ok bool) {
 	if err != nil {
 		return 0, false
 	}
-	_taskId, found := taskMap[strings.ToLower("ID")]
+	_taskId, found := taskMap["ID"]
 	if !found {
 		//todo log error
 		fmt.Println("not found id")
 		return 0, false
 	}
 	var _err error
-	taskid ,_err =  strconv.ParseInt(_taskId.(string),10,64)
+	taskid, _err = strconv.ParseInt(_taskId.(string), 10, 64)
 	if _err != nil {
 		fmt.Println("conv error")
 	}
@@ -208,7 +283,7 @@ func (service *TaskStorageService) getTaskToRunAt(t string) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	taskToRun, found := taskMap[strings.ToLower("ToRunAt")]
+	taskToRun, found := taskMap["ToRunAt"]
 	if !found {
 		//todo log error
 		fmt.Println("ToRunAt not found")
@@ -242,6 +317,7 @@ func NewTaskStorageService(ctx context.Context, url string, keepalive time.Durat
 		subCon:             subCon,
 		wg:                 sync.WaitGroup{},
 		ctx:                ctx,
+		keepaliveTimerChan: make(chan bool, 1),
 		keepalive:          keepalive,
 		topic:              topic,
 		waitingQ:           namePrefix + ":waitingSortedSet", //保存 ToRunAt taskid
@@ -252,5 +328,6 @@ func NewTaskStorageService(ctx context.Context, url string, keepalive time.Durat
 	}
 	// 当前连接已经订阅 topic 因此需要
 	t.subCon.Subscribe(t.topic)
+	timeService.TimerService.GetTimer("1m").Register(t)
 	return t
 }

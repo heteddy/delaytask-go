@@ -7,31 +7,35 @@ import (
 	"net/http"
 	"fmt"
 	"io/ioutil"
+	"timeService"
+	"encoding/json"
 )
 
 type ServicePingTask struct {
 	wheel.PeriodicTask
-	url string
+	Url string `json:"Url"`
 }
 
 func (t *ServicePingTask) Run() (bool, error) {
-	resp, err := http.Get(t.url)
+	fmt.Println("task run at", time.Now())
+	resp, err := http.Get(t.Url)
 	if err != nil {
 		// 生成报警
 		fmt.Println("告警发生")
+		return false, err
 	}
 	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("resp", resp.Status, resp.Body, string(body))
+	fmt.Println("resp", resp.Status, resp.Body, string(body), time.Now())
 	return true, nil
 }
 
 func (t *ServicePingTask) Next(w wheel.Wheeler) bool {
 	now := time.Now()
-	if now.After(t.EndTime) {
+	if now.After(time.Time(t.EndTime)) {
 		return true
 	} else {
 		// 修改下次运行的时间
-		t.ToRunAt = time.Now().Add(t.Interval)
+		t.ToRunAt = wheel.TaskTime(time.Now().Add(time.Duration(t.Interval)))
 		w.Add(t)
 	}
 	return true
@@ -39,47 +43,40 @@ func (t *ServicePingTask) Next(w wheel.Wheeler) bool {
 
 func main() {
 	tracer := trace.NewTrace(0x222)
-	/*
-	ID int64
-	// 类型
-	TaskType uint8
-	// 名称，用于打印
-	Name string
-	// 预计第一次运行时刻
-	ToRunAt time.Time
-	// 收到之后判断
-	ToRunAfter time.Duration
-	// 耗时，如果还没有执行 为0
-	Cost time.Duration
-	// 是否已经运行完成, 可以使用sync.Atomic来修改
-	Done uint8
-	// 错误描述
-	err error
-	// timeout 时间
-	Timeout time.Duration
-	// 实际运行的时间
-	RunAt time.Time
-	*/
 	runInterval := time.Second * 10
 	task := &ServicePingTask{
 		PeriodicTask: wheel.PeriodicTask{
 			Task: wheel.Task{
 				ID:         tracer.GetID().Int64(),
 				Name:       "ServicePingTask",
-				ToRunAt:    time.Now().Add(runInterval),
-				ToRunAfter: runInterval,
+				ToRunAt:    wheel.TaskTime(time.Now().Add(runInterval)),
+				ToRunAfter: wheel.TaskDuration(runInterval),
 				Done:       0,
-				Timeout:    time.Second * 5,
+				Timeout:    wheel.TaskDuration(time.Second * 5),
 			},
-			Interval: runInterval,
-			EndTime:  time.Now().Add(time.Hour * 24 * 365),
+			Interval: wheel.TaskDuration(runInterval),
+			EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
 		},
-		url: "http://127.0.0.1:8080/ping/",
+		Url: "http://101.132.72.222:8080/ping/",
+	}
+	if data, err := json.Marshal(task); err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("json data", string(data))
+		var s ServicePingTask
+		if err:=json.Unmarshal(data,&s); err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Println(s.GetID(),s.GetName(),s.Url,s.ToRunAt.ToTime(),s.ToRunAfter.ToDuration())
+		}
 	}
 
 	tw := wheel.NewTimeWheel("1s", 10, 5)
 	tw.Add(task)
 	tw.Start()
+	// 最后启动timeService，否则导致不准
+	timeService.TimerService.Start()
 	select {}
 	tw.Stop()
+	timeService.TimerService.Stop()
 }

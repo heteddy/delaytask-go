@@ -1,9 +1,8 @@
-package wheelTicker
+package timeService
 
 import (
 	"fmt"
 	"testing"
-	"time"
 )
 
 type MyListener struct {
@@ -17,11 +16,11 @@ func (m *MyListener) EventOccur() {
 }
 
 func TestNewWheelTicker(t *testing.T) {
-	ticker := NewWheelTicker(time.Second * 1)
-	ticker.Register(&MyListener{1, 0})
-	ticker.Register(&MyListener{2, 0})
-	ticker.Start()
-	time.Sleep(time.Second * 30)
-	ticker.Stop()
+	//ticker := NewWheelTicker(time.Second * 1)
+	//ticker.Register(&MyListener{1, 0})
+	//ticker.Register(&MyListener{2, 0})
+	//ticker.Start()
+	//time.Sleep(time.Second * 30)
+	//ticker.Stop()
 	t.Log("hello world")
 }

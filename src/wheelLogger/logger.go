@@ -20,11 +20,3 @@ func init() {
 	Logger.SetLevel(logrus.InfoLevel)
 	//Logger.AddHook(NewFieldsHook("web", true, true))
 }
-
-//func formatFileName(name string) string {
-//	index := strings.LastIndex(name, "/")
-//	if index > 0 {
-//		return name[index+1:]
-//	}
-//	return name
-//}

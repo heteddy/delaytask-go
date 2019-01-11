@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 	"wheelLogger"
-	"timewheel/wheelTicker"
+	"timeService"
 )
 
 func round(input float64) int64 {
@@ -35,8 +35,6 @@ type TaskNode struct {
 	worker IWorker // 执行task的worker pool
 }
 
-// todo 这里单独运行一个go routine不然要死锁，因为这里可能导致再次加入timeWheel
-//
 func (t *TaskNode) runNode() (run bool) {
 
 	if t.round == 0 {
@@ -170,7 +168,6 @@ func (w *Wheel) GetTaskInfo() string {
 首先根据执行时间计算放入那个slot，然后保存到RunnerMap中，方便查询
 */
 func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
-
 	toRunAfter := runner.GetToRunAfter()
 	index := w.index
 	switch {
@@ -202,14 +199,12 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 		offset := round(float64(int64(toRunAfter)%roundDuration) / float64(ticks))
 
 		var idx int64
-		if index == -1 {
-			// wheel还没有开始转动，index == -1，如果保持-1，则后面的slots[idx]会报错
-			idx = int64(int64(index+1)+offset) % int64(w.count)
-		} else {
-			// index != -1, 说明开始转动，正常逻辑就是直接加上当前的偏移
-			idx = int64(int64(index)+offset) % int64(w.count)
-		}
+		//index != -1, 说明开始转动，正常逻辑就是直接加上当前的偏移
+		idx = int64(int64(index)+offset) % int64(w.count)
+
 		// 临界条件，如果恰好是整数圈，调整rounds数
+		// 由于添加任务操作和timer 触发运行task在一个goroutine中，因此可以保证顺序性
+		// 也就是这里的index里面的task已经被执行过了
 		if offset == 0 {
 			if rounds > 0 {
 				rounds -= 1
@@ -298,7 +293,7 @@ func (cmd *listRunnersCommand) Execute(w *TimeWheeler) {
 
 type TimeWheeler struct {
 	ring     *Wheel
-	ticker   wheelTicker.WheelTicker
+	ticker   timeService.AbstractTimer
 	pool     *Pool
 	cmdChan  chan Command
 	quitChan chan bool
@@ -313,10 +308,12 @@ func NewTimeWheel(duration string, slot int, worker int) *TimeWheeler {
 	wheelLogger.Logger.WithFields(logrus.Fields{
 		duration: tickerDuration,
 	})
+	factory := timeService.TimerService
 	// 创建一个timer
 	timeWheeler := &TimeWheeler{
 		nil,
-		wheelTicker.NewWheelTicker(tickerDuration),
+		//timeService.NewWheelTicker(tickerDuration),
+		factory.GetTimer(duration),
 		nil,
 		make(chan Command, worker), //带缓存
 		make(chan bool, 1),
@@ -337,7 +334,7 @@ func NewTimeWheel(duration string, slot int, worker int) *TimeWheeler {
 		ticks: tickerDuration,
 		// 时间轮 槽的数量
 		count:     int64(slot),
-		index:     -1,
+		index:     0,
 		slots:     slots,
 		runnerMap: make(map[int64]*runnerInfo),
 		wheeler:   timeWheeler,
@@ -364,12 +361,10 @@ func (wheel *TimeWheeler) Start() {
 		}
 		wheelLogger.Logger.WithFields(logrus.Fields{}).Errorln("TimeWheeler exit error")
 	}()
-	wheel.ticker.Start()
 	wheel.pool.Start()
 }
 func (wheel *TimeWheeler) Stop() {
 	wheel.quitChan <- true
-	wheel.ticker.Stop()
 	wheel.pool.Stop()
 
 	time.Sleep(time.Second * 1)
