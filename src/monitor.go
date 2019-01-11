@@ -64,10 +64,10 @@ func main() {
 	} else {
 		fmt.Println("json data", string(data))
 		var s ServicePingTask
-		if err:=json.Unmarshal(data,&s); err != nil {
+		if err := json.Unmarshal(data, &s); err != nil {
 			fmt.Println(err)
 		} else {
-			fmt.Println(s.GetID(),s.GetName(),s.Url,s.ToRunAt.ToTime(),s.ToRunAfter.ToDuration())
+			fmt.Println(s.GetID(), s.GetName(), s.Url, s.ToRunAt.ToTime(), s.ToRunAfter.ToDuration())
 		}
 	}
 

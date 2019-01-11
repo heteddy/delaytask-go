@@ -51,10 +51,10 @@ type Runner interface {
 type TaskTime time.Time
 type TaskDuration time.Duration
 
-func (t TaskTime) ToTime() time.Time{
+func (t TaskTime) ToTime() time.Time {
 	return time.Time(t)
 }
-func (t TaskDuration) ToDuration() time.Duration{
+func (t TaskDuration) ToDuration() time.Duration {
 	return time.Duration(t)
 }
 
@@ -104,7 +104,7 @@ type Task struct {
 	Cost TaskDuration `json:"Cost"`
 	// 是否已经运行完成, 可以使用sync.Atomic来修改
 	Done uint8 `json:"Done"`
-	// 错误描述
+	// 错误描述, 小写开头字段(private)不能被导出
 	err error `json:"-"`
 	// timeout 时间
 	Timeout TaskDuration `json:"Timeout"`

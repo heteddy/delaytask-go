@@ -72,7 +72,7 @@ func TestWheel(t *testing.T) {
 	for idx, p := range periodTasks {
 		interval, _ := time.ParseDuration(p)
 		tasks[idx] = NewPeriodSleepTask(int64(trace.GetID()), interval, time.Now().Add(endDuration))
-		jsonTask , err := json.Marshal(tasks[idx])
+		jsonTask, err := json.Marshal(tasks[idx])
 		fmt.Println(string(jsonTask))
 		fmt.Println(err)
 		//w.Add(t)
