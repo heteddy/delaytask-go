@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 )
-
 var STARTTIME time.Time
 
 func init() {

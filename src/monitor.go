@@ -5,10 +5,15 @@ import (
 	"time"
 	"utils/trace"
 	"net/http"
-	"fmt"
 	"io/ioutil"
-	"timeService"
 	"encoding/json"
+
+	"timewheel/tracker"
+	"timewheel"
+	"wheelLogger"
+	"github.com/sirupsen/logrus"
+	_ "net/http/pprof"
+	"log"
 )
 
 type ServicePingTask struct {
@@ -17,39 +22,53 @@ type ServicePingTask struct {
 }
 
 func (t *ServicePingTask) Run() (bool, error) {
-	fmt.Println("task run at", time.Now())
+
 	resp, err := http.Get(t.Url)
 	if err != nil {
-		// 生成报警
-		fmt.Println("告警发生")
 		return false, err
 	}
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("resp", resp.Status, resp.Body, string(body), time.Now())
+	body, err := ioutil.ReadAll(resp.Body)
+	wheelLogger.Logger.WithFields(logrus.Fields{
+		"id":   t.GetID(),
+		"body": string(body),
+		"err":  err,
+	}).Infoln("ServicePingTask Run")
 	return true, nil
 }
 
-func (t *ServicePingTask) Next(w wheel.Wheeler) bool {
+func (t *ServicePingTask) Next() bool {
 	now := time.Now()
-	if now.After(time.Time(t.EndTime)) {
+
+	wheelLogger.Logger.WithFields(logrus.Fields{
+		"now":     now,
+		"EndTime": t.EndTime.ToTime(),
+	}).Infoln("ServicePingTask Next")
+	if now.After(t.EndTime.ToTime()) {
 		return true
 	} else {
 		// 修改下次运行的时间
-		t.ToRunAt = wheel.TaskTime(time.Now().Add(time.Duration(t.Interval)))
-		w.Add(t)
+		t.ToRunAt = wheel.TaskTime(time.Now().Add(t.Interval.ToDuration()))
+		tStr, _ := json.Marshal(t)
+
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"ID":        t.GetID(),
+			"t.ToRunAt": t.ToRunAt.ToTime(),
+		}).Infoln("ServicePingTask Publish Next")
+		tracker.Tracker.Publish(&tracker.TaskAddEvent{string(tStr)})
 	}
 	return true
 }
 
 func main() {
 	tracer := trace.NewTrace(0x222)
-	runInterval := time.Second * 10
+	runInterval := time.Second * 50
+	toRunAt := time.Now().Add(time.Minute * 2)
 	task := &ServicePingTask{
 		PeriodicTask: wheel.PeriodicTask{
 			Task: wheel.Task{
 				ID:         tracer.GetID().Int64(),
 				Name:       "ServicePingTask",
-				ToRunAt:    wheel.TaskTime(time.Now().Add(runInterval)),
+				ToRunAt:    wheel.TaskTime(toRunAt),
 				ToRunAfter: wheel.TaskDuration(runInterval),
 				Done:       0,
 				Timeout:    wheel.TaskDuration(time.Second * 5),
@@ -59,24 +78,29 @@ func main() {
 		},
 		Url: "http://101.132.72.222:8080/ping/",
 	}
-	if data, err := json.Marshal(task); err != nil {
-		fmt.Println(err)
-	} else {
-		fmt.Println("json data", string(data))
-		var s ServicePingTask
-		if err := json.Unmarshal(data, &s); err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Println(s.GetID(), s.GetName(), s.Url, s.ToRunAt.ToTime(), s.ToRunAfter.ToDuration())
-		}
-	}
 
-	tw := wheel.NewTimeWheel("1s", 10, 5)
-	tw.Add(task)
-	tw.Start()
-	// 最后启动timeService，否则导致不准
-	timeService.TimerService.Start()
+	engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
+		"messageQ", "remote-task0:")
+	engine.AddTaskCreator("ServicePingTask", func(task string) wheel.Runner {
+		p := &ServicePingTask{}
+		if err := json.Unmarshal([]byte(task), p); err != nil {
+
+		} else {
+			return p
+		}
+		return nil
+	})
+
+	engine.Start()
+
+	if data, err := json.Marshal(task); err != nil {
+	} else {
+		time.Sleep(time.Second * 1)
+		engine.Storage.Publish(string(data))
+	}
+	go func() {
+		log.Println(http.ListenAndServe("localhost:10000", nil))
+	}()
 	select {}
-	tw.Stop()
-	timeService.TimerService.Stop()
+	engine.Stop()
 }

@@ -2,20 +2,21 @@ package timewheel
 
 import (
 	"context"
-	"fmt"
 	"github.com/gomodule/redigo/redis"
 	"sync"
 	"time"
-	"encoding/json"
 	"github.com/pkg/errors"
 	"strconv"
 	"timeService"
 	"wheelLogger"
 	"github.com/sirupsen/logrus"
+	"timewheel/tracker"
+	"encoding/json"
 )
 
 /*
-1. 读取正在运行的tasks，场景：重新启动timewheel进程的时候，读取ongoing task，如果是异常崩溃，则可以从这里回复现场
+1. 读取正在运行的tasks，场景：重新启动timewheel进程的时候，读取ongoing task，如果是异常崩溃，
+   则可以从这里回复现场
 2. 启动服务，服务启动之后，
 	2.1 执行keepalive，
 	2.2 向redis订阅序列化的task，
@@ -27,13 +28,13 @@ type StorageService interface {
 	GetTaskInfo(tid string) (string, bool)
 	InsertToWaitingQ(string) bool
 	MoveWaitingToOngoingQ(time.Duration) ([]string, error)
-	ChangeTaskToComplete(string, bool)
-	RemoveFromTaskTable(int64) bool
+	ChangeTaskToComplete(string)
+	RemoveFromTaskTable(string) bool
+
+	Deserialize(string) (map[string]interface{}, error)
 	Start() bool
 	Stop() bool
 }
-
-type TaskComingFunc func(channel string, message []byte) bool
 
 type TaskStorageService struct {
 	taskTable          string
@@ -47,7 +48,6 @@ type TaskStorageService struct {
 	topic              string
 	wg                 sync.WaitGroup
 	ctx                context.Context
-	remoteTaskCallback TaskComingFunc
 }
 
 func (service *TaskStorageService) startKeepAlive() {
@@ -73,7 +73,9 @@ func (service *TaskStorageService) startKeepAlive() {
 				break loop
 			}
 		}
-		fmt.Println("exit startKeepalive!!")
+
+		wheelLogger.Logger.WithFields(logrus.Fields{
+		}).Warnln("TaskStorageService exit startKeepalive!!")
 		service.wg.Done()
 	}()
 }
@@ -81,6 +83,7 @@ func (service *TaskStorageService) EventOccur() {
 	service.keepaliveTimerChan <- true
 }
 func (service *TaskStorageService) startReceive() {
+
 	service.wg.Add(1)
 	go func() {
 	loop:
@@ -90,19 +93,26 @@ func (service *TaskStorageService) startReceive() {
 			case error:
 				break loop
 			case redis.Message:
-				fmt.Println("message", n)
+				wheelLogger.Logger.WithFields(logrus.Fields{
+					"channel": n.Channel,
+					"data":    string(n.Data),
+				}).Infoln("TaskStorageService receive data from redis")
 				// 自动保存到taskTable
-				service.remoteTaskCallback(n.Channel, n.Data)
+				tracker.Tracker.Publish(&tracker.TaskReceivedEvent{string(n.Data)})
 			case redis.Subscription:
 				switch n.Count {
 				case 1:
 				case 0:
 					// 结束subscribe
+					wheelLogger.Logger.WithFields(logrus.Fields{
+					}).Warnln("unsubscribe will exit!!")
 					break loop
 				}
 			}
 		}
-		fmt.Println("exit receive!!")
+		wheelLogger.Logger.WithFields(logrus.Fields{
+		}).Warnln("TaskStorageService exit receive!!")
+
 		service.wg.Done()
 	}()
 }
@@ -116,126 +126,163 @@ func (service *TaskStorageService) Stop() bool {
 	service.subCon.Unsubscribe(service.topic)
 	service.quitChan <- true
 	// 这里关闭可能导致
-
 	service.wg.Wait()
 	timeService.TimerService.GetTimer("1m").Unregister(service)
 	close(service.keepaliveTimerChan)
 	service.subCon.Close()
 	service.connection.Close()
-
 	return true
 }
+
+// 直接从ongoingQ中取出所有的task
 func (service *TaskStorageService) LoadOngoingTask() ([]string, error) {
-	reply, err := service.connection.Do("LRANGE", service.ongoingQ, 0, -1)
-	fmt.Println(reply, err)
+	// ongoingQ中获取task id
+	reply, _ := service.connection.Do("LRANGE", service.ongoingQ, 0, -1)
 
 	switch reply.(type) {
 	case []interface{}:
-		taskIDs := reply.([]interface{})
-		if len(taskIDs) > 0 {
-			args := make([]interface{}, len(taskIDs)+1)
-			args[0] = service.taskTable
-			for idx, idInterface := range taskIDs {
-				args[idx+1] = idInterface
+		tasks := reply.([]interface{})
+		if len(tasks) > 0 {
+			result := make([]string, len(tasks))
+			for idx, idInterface := range tasks {
+				result[idx] = string(idInterface.([]byte))
 			}
-			// 获取tasks
-			reply, err := service.connection.Do("HMGET", args)
-			if err != nil {
-				return make([]string, 0), nil
-			}
-			switch reply.(type) {
-			case []interface{}:
-				results := make([]string, len(reply.([]interface{})))
-				if len(results) > 0 {
-					for idx, taskInterface := range reply.([]interface{}) {
-						results[idx] = string(taskInterface.([]byte))
-					}
-				}
-				return results, nil
-			default:
-				return nil, errors.New("find error in task table")
-			}
+			return result, nil
 		} else {
 			// no ongoing tasks
 			return make([]string, 0), nil
 		}
 	default:
 	}
-	return nil, errors.New("no ongoing tasks")
+	return make([]string, 0), errors.New("no ongoing tasks")
 }
+
+// 从waitingQ中取出task，放入ongoingQ中task
 func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duration) ([]string, error) {
-	result := make([]string, 0)
 
 	// 1. 获取所有的小于 toRunAfter的
 	now := time.Now()
 	fromSec := now.Unix()
 	toSec := now.Add(toRunAfter).Unix()
+	// 根据时间 （< toRunAfter） 获取waitingQ中的task，
+
+	wheelLogger.Logger.WithFields(logrus.Fields{
+		"fromSec": fromSec,
+		"toSec":   toSec,
+	}).Infoln("TaskStorageService MoveWaitingToOngoingQ")
 	reply, err := service.connection.Do("ZRANGEBYSCORE", service.waitingQ, fromSec, toSec)
-	fmt.Println(reply, err)
+	if err != nil {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"fromSec": fromSec,
+			"toSec":   toSec,
+			"err":     err,
+		}).Warnln("TaskStorageService MoveWaitingToOngoingQ ZRANGEBYSCORE error")
+	}
 	// 2. 移动符合条件的task到ongoingQ
 	switch reply.(type) {
 	case []interface{}:
-		waitingTaskIds := reply.([]interface{})
-		if len(waitingTaskIds) > 0 {
+		waitingTasks := reply.([]interface{})
+		if length := len(waitingTasks); length > 0 {
+			result := make([]string, length)
 
+			ongoingArg := make([]interface{}, length+1)
+			ongoingArg[0] = service.ongoingQ
+
+			for idx, t := range waitingTasks {
+				result[idx] = string(t.([]byte))
+				ongoingArg[idx+1] = t
+			}
+			// task 直接放入ongoingQ
+
+			reply, err := service.connection.Do("LPUSH", ongoingArg...)
+			if err != nil {
+				wheelLogger.Logger.WithFields(logrus.Fields{
+					"ongoingArg": ongoingArg,
+					"reply":      reply,
+					"err":        err,
+				}).Warnln("TaskStorageService MoveWaitingToOngoingQ LPUSH to ongoingQ error")
+			} else {
+				// 移除waitingQ的内容
+				reply, err = service.connection.Do("ZREMRANGEBYSCORE", service.waitingQ, fromSec, toSec)
+			}
+			return result, nil
 		} else {
 			return make([]string, 0), nil
 		}
 	}
 	// 3. 返回符合条件的task
-	return result, nil
+	return make([]string, 0), nil
 }
-func (service *TaskStorageService) ChangeTaskToComplete(tid string, removeFromTaskTable bool) {
-	// 1. remove from ongoing task
-	reply, err := service.connection.Do("LREM", service.ongoingQ, 0, tid)
-	fmt.Println("ChangeTaskToComplete", reply, err)
-	// 2. 从task table中删除
-	if removeFromTaskTable {
-		//taskId, ok := service.getTaskID(t)
-		service.connection.Do("HDEL", service.taskTable, tid)
+
+// 从ongoingQ中删除task
+func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
+	task, ok := service.GetTaskInfo(tid)
+	if ok {
+		// todo 需要使用pipline?
+		//1. 从task table中删除
+		// taskId, ok := service.getTaskID(t)
+		service.RemoveFromTaskTable(tid)
+		// 2. remove from ongoing task
+		reply, err := service.connection.Do("LREM", service.ongoingQ, 0, task)
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"reply": reply,
+			"err":   err,
+		}).Infoln("TaskStorageService ChangeTaskToComplete remove from ongoingQ")
+	} else {
+		//没有找到task
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"task": task,
+			"ok":   ok,
+		}).Warnln("TaskStorageService ChangeTaskToComplete get task info error")
 	}
+
 }
-func (service *TaskStorageService) RemoveFromTaskTable(tid int64) bool {
+func (service *TaskStorageService) RemoveFromTaskTable(tid string) bool {
 	reply, err := service.connection.Do("HDEL", service.taskTable, tid)
+	wheelLogger.Logger.WithFields(logrus.Fields{
+		"reply": reply,
+		"err":   err,
+	}).Infoln("TaskStorageService RemoveFromTaskTable")
 	if err != nil {
 		return false
 	}
-	fmt.Println("AppendToTaskTable", reply)
 	return true
 }
+
+// 每个period task执行完成之后，可能会重新加入到waitingQ
+//
 func (service *TaskStorageService) InsertToWaitingQ(t string) bool {
-	//只需要把taskid放到 waitingQ中
-	toRunAt, ok := service.getTaskToRunAt(t)
+	// 把 task 放到 waitingQ中
+	toRunAt, ok := service.GetTaskToRunAt(t)
 	if !ok {
 		return false
 	}
-	reply, err := service.connection.Do("ZADD", service.waitingQ, toRunAt, t)
+	// task 放入 sorted waitingQ
+	_, err := service.connection.Do("ZADD", service.waitingQ, toRunAt, t)
 	if err != nil {
 		return false
 	}
-	fmt.Println("AppendToTaskTable", reply)
+
 	return true
 }
 func (service *TaskStorageService) AppendToTaskTable(t string) bool {
-	taskId, ok := service.getTaskID(t)
+	taskId, ok := service.GetTaskID(t)
 	if !ok {
 		return false
 	}
 	// 插入到task table中h
-	reply, err := service.connection.Do("HSET", service.taskTable, taskId, t)
+	_, err := service.connection.Do("HSET", service.taskTable, taskId, t)
 	if err != nil {
 		return false
 	}
-	fmt.Println("AppendToTaskTable", reply)
+
 	return true
 }
 func (service *TaskStorageService) GetTaskInfo(tid string) (string, bool) {
-	fmt.Println("GetTaskInfo,tid", tid)
+
 	// 插入到task table中h
 	reply, err := service.connection.Do("HGET", service.taskTable, tid)
-	//fmt.Println("reply is", reply)
-	//fmt.Println(string(reply.([]byte)))
-	//fmt.Println("error is", err)
+
 	if err != nil {
 		return "", false
 	}
@@ -246,55 +293,62 @@ func (service *TaskStorageService) GetTaskInfo(tid string) (string, bool) {
 	default:
 		return "", false
 	}
-
 }
 
-func (service *TaskStorageService) deserialize(t string) (map[string]interface{}, error) {
+func (service *TaskStorageService) Deserialize(t string) (map[string]interface{}, error) {
+
 	taskMap := make(map[string]interface{})
-	fmt.Println(t)
-	if err := json.Unmarshal([]byte(t), &taskMap); err != nil {
-		//todo log error
-		fmt.Println("task 输入错误")
-		return nil, errors.New("task 输入错误")
+
+	err := json.Unmarshal([]byte(t), &taskMap)
+	if err != nil {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"err": err,
+		}).Errorln("TaskStorageService Deserialize error")
+	} else {
 	}
 	return taskMap, nil
 }
 
-func (service *TaskStorageService) getTaskID(t string) (taskid int64, ok bool) {
-	taskMap, err := service.deserialize(t)
+func (service *TaskStorageService) GetTaskID(t string) (taskid int64, ok bool) {
+	taskMap, err := service.Deserialize(t)
 	if err != nil {
 		return 0, false
 	}
 	_taskId, found := taskMap["ID"]
 	if !found {
 		//todo log error
-		fmt.Println("not found id")
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"task": t,
+		}).Errorln("TaskStorageService GetTaskID no ID in task")
 		return 0, false
 	}
 	var _err error
 	taskid, _err = strconv.ParseInt(_taskId.(string), 10, 64)
 	if _err != nil {
-		fmt.Println("conv error")
 	}
 	return taskid, true
 }
-func (service *TaskStorageService) getTaskToRunAt(t string) (int64, bool) {
-	taskMap, err := service.deserialize(t)
+func (service *TaskStorageService) GetTaskToRunAt(t string) (int64, bool) {
+	taskMap, err := service.Deserialize(t)
 	if err != nil {
 		return 0, false
 	}
+
 	taskToRun, found := taskMap["ToRunAt"]
 	if !found {
-		//todo log error
-		fmt.Println("ToRunAt not found")
+		wheelLogger.Logger.WithFields(logrus.Fields{
+		}).Errorln("GetTaskToRunAt fields error:ToRunAt")
 		return 0, false
 	}
-	toRunAt := taskToRun.(int64)
+	toRunAt, _ := strconv.ParseInt(taskToRun.(string), 10, 64)
 	return toRunAt, true
+}
+func (service *TaskStorageService) Publish(t string) {
+	service.connection.Do("PUBLISH", service.topic, t)
 }
 
 func NewTaskStorageService(ctx context.Context, url string, keepalive time.Duration, topic string,
-	namePrefix string, taskComing TaskComingFunc) StorageService {
+	namePrefix string) *TaskStorageService {
 
 	conn, err := redis.DialURL(url, redis.DialReadTimeout(keepalive+10*time.Second),
 		redis.DialWriteTimeout(10*time.Second))
@@ -319,11 +373,10 @@ func NewTaskStorageService(ctx context.Context, url string, keepalive time.Durat
 		ctx:                ctx,
 		keepaliveTimerChan: make(chan bool, 1),
 		keepalive:          keepalive,
-		topic:              topic,
-		waitingQ:           namePrefix + ":waitingSortedSet", //保存 ToRunAt taskid
-		ongoingQ:           namePrefix + ":ongoingSet",       // 保存 taskid
-		taskTable:          namePrefix + ":allTasksHash",     //保存taskid + serialized task
-		remoteTaskCallback: taskComing,
+		topic:              namePrefix + topic,
+		waitingQ:           namePrefix + "waitingSortedSet", // 保存 ToRunAt task
+		ongoingQ:           namePrefix + "ongoingSet",       // 保存 task list
+		taskTable:          namePrefix + "allTasksHash",     // 保存taskid + serialized task
 		quitChan:           make(chan bool, 1),
 	}
 	// 当前连接已经订阅 topic 因此需要

@@ -7,22 +7,11 @@ import (
 	"time"
 	"wheelLogger"
 	"timeService"
+	"runtime"
 )
 
-func round(input float64) int64 {
+func roundFloatToInt64(input float64) int64 {
 	return int64(math.Floor(input + 0.5))
-}
-
-/*
-TimeWheel的接口
-*/
-type Wheeler interface {
-	Add(Runner)
-	// 通过runnerID 删除一个Runner
-	Remove(int64)
-	//RemoveByRunnerID(int64)
-	//ExecuteCommand(command Command)
-	ListRunner()
 }
 
 /*
@@ -31,7 +20,8 @@ type Wheeler interface {
 */
 type TaskNode struct {
 	Runner
-	round  uint64  // 当运行轮数之后，再运行
+	round uint64 // 当运行轮数之后，再运行
+	// pool 的接口
 	worker IWorker // 执行task的worker pool
 }
 
@@ -51,7 +41,6 @@ func (t *TaskNode) runNode() (run bool) {
 type Node struct {
 	// taskNodes 元素为*TaskNode类型
 	taskNodes list.List //时间轮每个Node包含一个task 链表
-	wheeler   Wheeler
 }
 
 func (n *Node) count() int {
@@ -119,13 +108,11 @@ type Wheel struct {
 	ticks time.Duration
 	// 时间轮 槽的数量
 	count int64
+	// 索引
 	index int64
+	// 槽
 	slots []*Node // 时间轮插槽，每个包含TaskNode 链表和taskNode count
-	//pUpstream   *Wheel
-	//pDownstream *Wheel
-	// 这里所有的TimeWheel使用一个全局的读写锁，防止遍历的时候导致错误
-	//mu *sync.RWMutex
-	wheeler   Wheeler
+	// 保存task和task所在的index
 	runnerMap map[int64]*runnerInfo
 }
 
@@ -168,10 +155,18 @@ func (w *Wheel) GetTaskInfo() string {
 首先根据执行时间计算放入那个slot，然后保存到RunnerMap中，方便查询
 */
 func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
-	toRunAfter := runner.GetToRunAfter()
+	toRunAt := runner.GetToRunAt()
+
+	delta := toRunAt.Sub(time.Now()) // 需要进行round计算
+	//
+	deltaSeconds := roundFloatToInt64(delta.Seconds())
+
+	tickSeconds := roundFloatToInt64(w.ticks.Seconds())
+	roundDurationSeconds := tickSeconds * w.count
+
 	index := w.index
 	switch {
-	case toRunAfter < w.ticks: // 执行时间 < 一个slot时间，直接插入下一个slot
+	case deltaSeconds < tickSeconds: // 执行时间 < 一个slot时间，直接插入下一个slot
 		taskNode := &TaskNode{runner,
 			0,
 			pool,
@@ -183,21 +178,24 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			idx,
 		}
 		wheelLogger.Logger.WithFields(logrus.Fields{
-			"insert-index": idx,
-			"currentIdx":   index,
-			"round":        taskNode.round,
-			"toRunAfter":   toRunAfter,
-			"taskID":       taskNode.GetID(),
+			"insert-index":      idx,
+			"currentIdx":        index,
+			"round":             taskNode.round,
+			"delta":             delta,
+			"roundDeltaSeconds": deltaSeconds,
+			"tickSeconds":       tickSeconds,
+			"taskID":            taskNode.GetID(),
 		}).Infoln("delta < w.ring.ticks")
-	case toRunAfter > w.ticks:
-		ticks := int64(w.ticks)
-		roundDuration := int64(w.count) * ticks
-
+	case deltaSeconds > tickSeconds:
 		// 先计算需要多少轮
-		rounds := int64(toRunAfter) / roundDuration
-		// 2. 计算需要的偏移
-		offset := round(float64(int64(toRunAfter)%roundDuration) / float64(ticks))
+		rounds := deltaSeconds / roundDurationSeconds
 
+		secondsLeft := deltaSeconds - rounds*roundDurationSeconds
+		// 2. 计算需要的偏移
+		offset := secondsLeft / tickSeconds
+		if secondsLeft%tickSeconds != 0 {
+			offset += 1
+		}
 		var idx int64
 		//index != -1, 说明开始转动，正常逻辑就是直接加上当前的偏移
 		idx = int64(int64(index)+offset) % int64(w.count)
@@ -210,12 +208,12 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 				rounds -= 1
 			} else {
 				wheelLogger.Logger.WithFields(logrus.Fields{
-					"insert-index": idx,
-					"currentIdx":   index,
-					"round":        rounds,
-					"offset":       offset,
-					"toRunAfter":   toRunAfter,
-					"taskID":       runner.GetID(),
+					"insert-index":      idx,
+					"currentIdx":        index,
+					"roundFloatToInt64": rounds,
+					"offset":            offset,
+					"delta":             delta,
+					"taskID":            runner.GetID(),
 				}).Errorln("offset == 0 and rounds == 0!!!")
 			}
 		}
@@ -229,12 +227,12 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			idx,
 		}
 		wheelLogger.Logger.WithFields(logrus.Fields{
-			"insert-index": idx,
-			"currentIdx":   index,
-			"round":        taskNode.round,
-			"offset":       offset,
-			"toRunAfter":   toRunAfter,
-			"taskID":       taskNode.GetID(),
+			"insert-index":      idx,
+			"currentIdx":        index,
+			"roundFloatToInt64": taskNode.round,
+			"offset":            offset,
+			"delta":             delta,
+			"taskID":            taskNode.GetID(),
 		}).Infoln("delta > w.ring.ticks")
 
 	default:
@@ -243,7 +241,7 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 }
 
 /*
-删除操作发生在time wheel线程中，锁保护runnerMap
+删除操作发生在time wheel线程中
 */
 func (w *Wheel) RemoveRunner(runnerID int64) {
 	if info, ok := w.runnerMap[runnerID]; !ok {
@@ -258,9 +256,6 @@ func (w *Wheel) RemoveRunner(runnerID int64) {
 
 }
 
-type Command interface {
-	Execute(w *TimeWheeler)
-}
 type addRunnerCommand struct {
 	r Runner
 }
@@ -284,13 +279,15 @@ func (cmd *tickCommand) Execute(w *TimeWheeler) {
 	w.actualTick()
 }
 
-type listRunnersCommand struct {
-}
+//type listRunnersCommand struct {
+//}
+//func (cmd *listRunnersCommand) Execute(w *TimeWheeler) {
+//	w.actualListRunner()
+//}
 
-func (cmd *listRunnersCommand) Execute(w *TimeWheeler) {
-	w.actualListRunner()
+type Command interface {
+	Execute(w *TimeWheeler)
 }
-
 type TimeWheeler struct {
 	ring     *Wheel
 	ticker   timeService.AbstractTimer
@@ -299,35 +296,23 @@ type TimeWheeler struct {
 	quitChan chan bool
 }
 
-func NewTimeWheel(duration string, slot int, worker int) *TimeWheeler {
+func NewTimeWheel(duration string, slot int) *TimeWheeler {
+	worker := runtime.NumCPU()
 	tickerDuration, err := time.ParseDuration(duration)
 	if err != nil {
 		panic(err)
 		return nil
 	}
+
 	wheelLogger.Logger.WithFields(logrus.Fields{
 		duration: tickerDuration,
 	})
-	factory := timeService.TimerService
-	// 创建一个timer
-	timeWheeler := &TimeWheeler{
-		nil,
-		//timeService.NewWheelTicker(tickerDuration),
-		factory.GetTimer(duration),
-		nil,
-		make(chan Command, worker), //带缓存
-		make(chan bool, 1),
-	}
-	// task channel 带缓冲，防阻塞Time wheeler的运行
-	taskChan := make(chan Runner, worker*2)
-	pool := NewPool(worker, taskChan, timeWheeler)
-	timeWheeler.pool = pool
 
 	slots := make([]*Node, slot, slot)
 	for i := 0; i < len(slots); i++ {
 		slots[i] = &Node{
 			taskNodes: list.List{},
-			wheeler:   timeWheeler,
+			//wheeler:   timeWheeler,
 		}
 	}
 	wheel := &Wheel{
@@ -337,10 +322,20 @@ func NewTimeWheel(duration string, slot int, worker int) *TimeWheeler {
 		index:     0,
 		slots:     slots,
 		runnerMap: make(map[int64]*runnerInfo),
-		wheeler:   timeWheeler,
 	}
-	timeWheeler.ring = wheel
+	// task channel 带缓冲，防阻塞Time wheeler的运行
+	taskChan := make(chan Runner, worker*2)
+	pool := NewPool(worker, taskChan)
+	factory := timeService.TimerService
 
+	// 创建一个timer
+	timeWheeler := &TimeWheeler{
+		wheel,
+		factory.GetTimer(duration),
+		pool,
+		make(chan Command, worker), //带缓存
+		make(chan bool, 1),
+	}
 	timeWheeler.ticker.Register(timeWheeler)
 	return timeWheeler
 }
@@ -387,12 +382,6 @@ func (wheel *TimeWheeler) Remove(runnerID int64) {
 func (wheel *TimeWheeler) actualRemove(runnerID int64) {
 	wheel.ring.RemoveRunner(runnerID)
 }
-func (wheel *TimeWheeler) ListRunner() {
-	wheel.cmdChan <- &listRunnersCommand{}
-}
-func (wheel *TimeWheeler) actualListRunner() {
-	wheel.ring.GetTaskInfo()
-}
 
 func (wheel *TimeWheeler) String() string {
 	return ""
@@ -401,6 +390,9 @@ func (wheel *TimeWheeler) EventOccur() {
 	wheel.cmdChan <- &tickCommand{}
 }
 func (wheel *TimeWheeler) actualTick() {
-
 	wheel.ring.Tick()
+}
+
+func (wheel *TimeWheeler) RoundDuration() time.Duration {
+	return time.Duration(int64(wheel.ring.ticks) * wheel.ring.count)
 }

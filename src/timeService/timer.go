@@ -8,7 +8,6 @@ import (
 	"time"
 	"observer"
 	"sync"
-	"fmt"
 	"wheelLogger"
 	"github.com/sirupsen/logrus"
 )
@@ -32,6 +31,7 @@ type TimingService interface {
 	Start()
 	Stop()
 	GetTimer(duration string) AbstractTimer
+	//GetTimerByDuration(duration time.Duration) AbstractTimer
 }
 
 type WTimer struct {
@@ -109,74 +109,85 @@ func init() {
 	}
 }
 
-func (f *WheelTimingService) Start() {
-	f.ticker = time.NewTicker(f.baseTimer)
-	f.wg.Add(1)
+func (service *WheelTimingService) Start() {
+	service.ticker = time.NewTicker(service.baseTimer)
+	service.wg.Add(1)
 	// 启动另外一个goroutine发送事件
 	go func() {
 	loop:
 		for {
 			select {
 			// 先处理结束，不再发送
-			case <-f.doneChan:
+			case <-service.doneChan:
 				break loop
 
-			case <-f.ticker.C:
+			case <-service.ticker.C:
 				// 发送通知
 				// 这里上锁？
-				f.mu.RLock()
+				service.mu.RLock()
 				// todo 这里警告
 				// 给每个timer发送定时器到时
-				for _, v := range f.timerMap {
+				for _, v := range service.timerMap {
 					v.Tick()
 				}
-				f.mu.RUnlock()
+				service.mu.RUnlock()
 			}
 		}
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"time": time.Now(),
 		}).Infoln("exit timer factory!!")
-		f.wg.Done()
+		service.wg.Done()
 	}()
 }
-func (f *WheelTimingService) Stop() {
-	f.doneChan <- true
-	close(f.doneChan)
-	f.ticker.Stop()
-	f.wg.Wait()
+func (service *WheelTimingService) Stop() {
+	service.ticker.Stop()
+	service.doneChan <- true
+
+	service.wg.Wait()
+	// todo 这里可能发生panic？？
+	close(service.doneChan)
 }
-func (f *WheelTimingService) GetTimer(duration string) AbstractTimer {
+
+func (service *WheelTimingService) GetTimer(duration string) AbstractTimer {
 	d, err := time.ParseDuration(duration)
 
 	if err != nil {
 		//
-		fmt.Println("给定的duration string错误")
+
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"duration": duration,
+		}).Errorln("给定的duration string错误")
 		panic("给定的duration string错误")
 	}
-	if d.Nanoseconds() < f.baseTimer.Nanoseconds() {
-		fmt.Println("给定的duration string错误")
+	if d.Nanoseconds() < service.baseTimer.Nanoseconds() {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"duration": duration,
+		}).Errorln("duration 精度太高")
 		panic("不能小于base精度")
 	}
-	if d.Nanoseconds()%f.baseTimer.Nanoseconds() != 0 {
-		fmt.Println("timer的精度必须是base timer的整数倍", d.Nanoseconds(), f.baseTimer.Nanoseconds())
+	if d.Nanoseconds()%service.baseTimer.Nanoseconds() != 0 {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"duration":  duration,
+			"basetimer": service.baseTimer,
+		}).Errorln("timer的精度必须是base timer的整数倍")
 		panic("timer的精度必须是base timer的整数倍")
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if timer, found := f.timerMap[duration]; found {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if timer, found := service.timerMap[duration]; found {
 		return timer
 	} else {
 		// create a timer and insert into timerMap
 		t := &WTimer{
 			interval:    d,
 			description: duration,
-			tickerCount: d.Nanoseconds() / f.baseTimer.Nanoseconds(),
+			tickerCount: d.Nanoseconds() / service.baseTimer.Nanoseconds(),
 			listeners:   make(map[observer.Listener]bool),
 			mu:          sync.RWMutex{},
 			index:       0,
 		}
 
-		f.timerMap[duration] = t
+		service.timerMap[duration] = t
 		return t
 	}
 }

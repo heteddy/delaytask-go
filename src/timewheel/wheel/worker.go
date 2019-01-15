@@ -4,27 +4,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"time"
 	"wheelLogger"
+	"strconv"
+	"timewheel/tracker"
+	"runtime/debug"
 )
-
-//import (
-//	"timewheel/wheel"
-//)
-
-type IWorker interface {
-	Execute(Runner)
-}
 
 type Worker struct {
 	taskChan chan Runner
 	quitChan chan bool
-	wheeler  Wheeler
 }
 
-func NewWorker(taskChan chan Runner, wheeler Wheeler) *Worker {
+func NewWorker(taskChan chan Runner) *Worker {
 	w := &Worker{
 		taskChan: taskChan,
 		quitChan: make(chan bool, 1),
-		wheeler:  wheeler,
 	}
 	return w
 }
@@ -35,20 +28,43 @@ func (w *Worker) runTask(t Runner) {
 		// 如果设置timeout，启动一个新的goroutine
 		start := time.Now()
 		if duration > 0 {
-
-			errorChan := make(chan error, 1)
+			finishChan := make(chan bool, 1)
+			unexpectedError := make(chan interface{}, 1)
 			go func(t Runner, w *Worker) {
+				defer func() {
+					if err := recover(); err != nil {
+						// todo add log
+						wheelLogger.Logger.WithFields(logrus.Fields{
+							"err": err,
+						}).Errorln("run task unexpected panic，will not run this task again, although it is period task")
+						debug.PrintStack()
+						unexpectedError <- err
+					}
+				}()
+
 				_, err := t.Run()
 				if err != nil {
+					wheelLogger.Logger.WithFields(logrus.Fields{
+						"err": err,
+					}).Warnln("run task got an expected error")
 					t.SetError(err)
+					finishChan <- true
+				} else {
+					finishChan <- true
 				}
-				errorChan <- err
+				taskID := strconv.FormatInt(t.GetID(), 10)
+				tracker.Tracker.Publish(
+					&tracker.TaskCompleteEvent{
+						TaskId: taskID,
+					})
+
 			}(t, w)
 
 			select {
-			case <-errorChan:
-				t.Next(w.wheeler)
-				// 如果发生错误，是否还继续添加到时间轮
+			case <-unexpectedError:
+				// 发生了未捕获的异常，就不再执行这个task了
+			case <-finishChan:
+				t.Next()
 			case <-time.After(duration):
 				// 打印任务结束当前的任务
 				// 运行超时不再添加
@@ -67,7 +83,12 @@ func (w *Worker) runTask(t Runner) {
 			}
 			// 具体的task实现这个轮
 			//先加入在运行
-			t.Next(w.wheeler)
+			taskID := strconv.FormatInt(t.GetID(), 10)
+			tracker.Tracker.Publish(
+				&tracker.TaskCompleteEvent{
+					taskID,
+				})
+			t.Next()
 		}
 
 	}
@@ -104,18 +125,16 @@ type Pool struct {
 	count    int
 	pool     []*Worker
 	taskChan chan Runner
-	wheeler  Wheeler
 }
 
-func NewPool(count int, taskChan chan Runner, wheeler Wheeler) *Pool {
+func NewPool(count int, taskChan chan Runner) *Pool {
 	p := &Pool{
 		count:    count,
 		taskChan: taskChan,
-		wheeler:  wheeler,
 	}
 	p.pool = make([]*Worker, count)
 	for i := 0; i < count; i++ {
-		p.pool[i] = NewWorker(taskChan, p.wheeler)
+		p.pool[i] = NewWorker(taskChan)
 	}
 	return p
 }
