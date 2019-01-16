@@ -149,12 +149,6 @@ func (f *taskFactory) Create(task string) Runner {
 		creator, existed := f.creatorMap[name]
 		if existed {
 			runner := creator(task)
-			wheelLogger.Logger.WithFields(logrus.Fields{
-				"id":         runner.GetID(),
-				"name":       runner.GetName(),
-				"ToRunAt":    runner.GetToRunAt(),
-				"ToRunAfter": runner.GetToRunAfter(),
-			}).Infoln("create okay")
 			return runner
 		} else {
 			wheelLogger.Logger.WithFields(logrus.Fields{

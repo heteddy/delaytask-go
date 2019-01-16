@@ -49,18 +49,9 @@ func (engine *DelayTaskEngine) addTask(t string) bool {
 	if ok {
 		if toRunAtTime.After(thresholdTime) {
 			// 放入WaitingQ
-			//wheelLogger.Logger.WithFields(logrus.Fields{
-			//	"toRunAtTime": toRunAtTime,
-			//	"threshold":   thresholdTime,
-			//}).Infoln("DelayTaskEngine add task,will add to waitingQ")
 			engine.Storage.InsertToWaitingQ(t)
 			engine.Storage.AppendToTaskTable(t)
 		} else {
-			// 创建task 放入timewheel
-			//wheelLogger.Logger.WithFields(logrus.Fields{
-			//	"toRunAtTime": toRunAtTime,
-			//	"threshold":   thresholdTime,
-			//}).Infoln("DelayTaskEngine add task,will add to timewheel")
 			task := engine.createTask(t)
 			engine.timeWheel.Add(task)
 		}
@@ -118,10 +109,6 @@ func (engine *DelayTaskEngine) Start() {
 							//taskMap, err := engine.Storage.Deserialize(ts)
 							task := engine.createTask(ts)
 							if task != nil {
-								//wheelLogger.Logger.WithFields(logrus.Fields{
-								//	"taskID":   task.GetID(),
-								//	"taskName": task.GetName(),
-								//}).Infoln("DelayTaskEngine start:TASK_LOAD_ONGOING:create task success")
 								engine.timeWheel.Add(task)
 							} else {
 								wheelLogger.Logger.WithFields(logrus.Fields{
@@ -138,16 +125,12 @@ func (engine *DelayTaskEngine) Start() {
 						for _, ts := range taskStr {
 							task := engine.createTask(ts)
 							if task != nil {
-								//wheelLogger.Logger.WithFields(logrus.Fields{
-								//	"taskID":   task.GetID(),
-								//	"taskName": task.GetName(),
-								//}).Infoln("DelayTaskEngine start:TASK_LOADING:create task success")
+								wheelLogger.Logger.WithFields(logrus.Fields{
+									"taskID":   task.GetID(),
+									"taskName": task.GetName(),
+								}).Infoln("DelayTaskEngine start:TASK_LOADING:create task success")
 								engine.timeWheel.Add(task)
 							} else {
-								wheelLogger.Logger.WithFields(logrus.Fields{
-									"taskStr": taskStr,
-									"task":    task,
-								}).Errorln("DelayTaskEngine start:TASK_LOADING:create task error")
 							}
 						}
 					}
@@ -191,10 +174,6 @@ func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic st
 		time.Minute, subscribeTopic, prefix)
 	// 3 倍的
 	dur := time.Duration(int64(tw.RoundDuration()) * 3)
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		"threshold":     dur,
-	}).Infoln("NewEngine set threshold")
-
 
 	engine := &DelayTaskEngine{
 		timeWheel: tw,

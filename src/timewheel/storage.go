@@ -224,11 +224,11 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 		service.RemoveFromTaskTable(tid)
 		// 2. remove from ongoing task
 		reply, err := service.connection.Do("LREM", service.ongoingQ, 0, task)
-		if err!=nil {
+		if err != nil {
 			wheelLogger.Logger.WithFields(logrus.Fields{
 				"reply": reply,
 				"err":   err,
-			}).Infoln("TaskStorageService ChangeTaskToComplete remove from ongoingQ")
+			}).Warnln("TaskStorageService ChangeTaskToComplete remove from ongoingQ")
 		}
 
 	} else {
