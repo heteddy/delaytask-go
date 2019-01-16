@@ -7,38 +7,34 @@ type EventHandler interface {
 }
 
 const (
-	TASK_COMPLETE = iota
-	TASK_Add
-	TASK_RECEIVED
-	TASK_LOADING
-	TASK_LOAD_ONGOING
+	TaskCompleteEventType        = iota
+	TaskAddEventType
+	TaskReceivedEventType
+	PeriodTaskLoadingEventType
+	TaskLoadingOngoingsEventType
 )
 
 type Event interface {
 	GetType() int
-	GetTaskID() string
-	GetTask() string
+	GetBody() string
 }
 type TaskLoadOngoing struct {
 }
+
 func (e *TaskLoadOngoing) GetType() int {
-	return TASK_LOAD_ONGOING
+	return TaskLoadingOngoingsEventType
 }
-func (e *TaskLoadOngoing) GetTaskID() string {
+func (e *TaskLoadOngoing) GetBody() string {
 	return ""
 }
-func (e *TaskLoadOngoing) GetTask() string {
-	return ""
-}
+
 type TaskLoadingEvent struct {
 }
+
 func (e *TaskLoadingEvent) GetType() int {
-	return TASK_LOADING
+	return PeriodTaskLoadingEventType
 }
-func (e *TaskLoadingEvent) GetTaskID() string {
-	return ""
-}
-func (e *TaskLoadingEvent) GetTask() string {
+func (e *TaskLoadingEvent) GetBody() string {
 	return ""
 }
 
@@ -47,25 +43,21 @@ type TaskCompleteEvent struct {
 }
 
 func (e *TaskCompleteEvent) GetType() int {
-	return TASK_COMPLETE
+	return TaskCompleteEventType
 }
-func (e *TaskCompleteEvent) GetTaskID() string {
-	return e.TaskId
-}
-func (e *TaskCompleteEvent) GetTask() string {
+func (e *TaskCompleteEvent) GetBody() string {
 	return e.TaskId
 }
 
 type TaskReceivedEvent struct {
 	Task string
 }
+
 func (e *TaskReceivedEvent) GetType() int {
-	return TASK_RECEIVED
+	return TaskReceivedEventType
 }
-func (e *TaskReceivedEvent) GetTaskID() string {
-	return ""
-}
-func (e *TaskReceivedEvent) GetTask() string {
+
+func (e *TaskReceivedEvent) GetBody() string {
 	return e.Task
 }
 
@@ -74,12 +66,9 @@ type TaskAddEvent struct {
 }
 
 func (e *TaskAddEvent) GetType() int {
-	return TASK_Add
+	return TaskAddEventType
 }
-func (e *TaskAddEvent) GetTaskID() string {
-	return ""
-}
-func (e *TaskAddEvent) GetTask() string {
+func (e *TaskAddEvent) GetBody() string {
 	return e.Task
 }
 
@@ -97,10 +86,10 @@ func init() {
 	}
 }
 
-func (t *TaskTracker) Subscribe(taskType int, l EventHandler) {
+func (t *TaskTracker) Subscribe(taskType int, handler EventHandler) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.listeners[taskType] = l
+	t.listeners[taskType] = handler
 }
 
 func (t *TaskTracker) Publish(event Event) {

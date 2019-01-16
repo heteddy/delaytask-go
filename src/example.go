@@ -29,7 +29,7 @@ func (t *OncePingTask) Run() (bool, error) {
 		"ToRunAt": t.GetToRunAt(),
 	}).Infoln("OncePingTask ToRunAt RunAt")
 
-	resp.Body.Close()
+	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	wheelLogger.Logger.WithFields(logrus.Fields{
 		"id":   t.GetID(),

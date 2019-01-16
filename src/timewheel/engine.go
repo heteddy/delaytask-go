@@ -91,13 +91,13 @@ func (engine *DelayTaskEngine) Start() {
 			case event := <-engine.eventChan:
 				taskType := event.GetType()
 				switch taskType {
-				case tracker.TASK_COMPLETE:
-					engine.remove(event.GetTaskID())
-				case tracker.TASK_Add:
-					engine.add(event.GetTask())
-				case tracker.TASK_RECEIVED:
-					engine.onMessage(event.GetTask())
-				case tracker.TASK_LOAD_ONGOING:
+				case tracker.TaskCompleteEventType:
+					engine.remove(event.GetBody())
+				case tracker.TaskAddEventType:
+					engine.add(event.GetBody())
+				case tracker.TaskReceivedEventType:
+					engine.onMessage(event.GetBody())
+				case tracker.TaskLoadingOngoingsEventType:
 					taskStr, err := engine.Storage.LoadOngoingTask()
 					if err != nil {
 						wheelLogger.Logger.WithFields(logrus.Fields{
@@ -118,7 +118,7 @@ func (engine *DelayTaskEngine) Start() {
 							}
 						}
 					}
-				case tracker.TASK_LOADING:
+				case tracker.PeriodTaskLoadingEventType:
 					taskStr, err := engine.Storage.MoveWaitingToOngoingQ(engine.threshold)
 					if err != nil {
 					} else {
@@ -128,7 +128,7 @@ func (engine *DelayTaskEngine) Start() {
 								wheelLogger.Logger.WithFields(logrus.Fields{
 									"taskID":   task.GetID(),
 									"taskName": task.GetName(),
-								}).Infoln("DelayTaskEngine start:TASK_LOADING:create task success")
+								}).Infoln("DelayTaskEngine start:PeriodTaskLoadingEventType:create task success")
 								engine.timeWheel.Add(task)
 							} else {
 							}
@@ -187,9 +187,9 @@ func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic st
 	}
 	// 没一个round，取一次待执行的任务，保证每次取回来的任务round都是2
 	timeService.TimerService.GetTimer(tw.RoundDuration().String()).Register(engine)
-	tracker.Tracker.Subscribe(tracker.TASK_Add, engine)
-	tracker.Tracker.Subscribe(tracker.TASK_COMPLETE, engine)
-	tracker.Tracker.Subscribe(tracker.TASK_RECEIVED, engine)
+	tracker.Tracker.Subscribe(tracker.TaskAddEventType, engine)
+	tracker.Tracker.Subscribe(tracker.TaskCompleteEventType, engine)
+	tracker.Tracker.Subscribe(tracker.TaskReceivedEventType, engine)
 
 	return engine
 }
