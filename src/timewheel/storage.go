@@ -166,10 +166,10 @@ func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duratio
 	toSec := now.Add(toRunAfter).Unix()
 	// 根据时间 （< toRunAfter） 获取waitingQ中的task，
 
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		"fromSec": fromSec,
-		"toSec":   toSec,
-	}).Infoln("TaskStorageService MoveWaitingToOngoingQ")
+	//wheelLogger.Logger.WithFields(logrus.Fields{
+	//	"fromSec": fromSec,
+	//	"toSec":   toSec,
+	//}).Infoln("TaskStorageService MoveWaitingToOngoingQ")
 	reply, err := service.connection.Do("ZRANGEBYSCORE", service.waitingQ, fromSec, toSec)
 	if err != nil {
 		wheelLogger.Logger.WithFields(logrus.Fields{
@@ -224,10 +224,13 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 		service.RemoveFromTaskTable(tid)
 		// 2. remove from ongoing task
 		reply, err := service.connection.Do("LREM", service.ongoingQ, 0, task)
-		wheelLogger.Logger.WithFields(logrus.Fields{
-			"reply": reply,
-			"err":   err,
-		}).Infoln("TaskStorageService ChangeTaskToComplete remove from ongoingQ")
+		if err!=nil {
+			wheelLogger.Logger.WithFields(logrus.Fields{
+				"reply": reply,
+				"err":   err,
+			}).Infoln("TaskStorageService ChangeTaskToComplete remove from ongoingQ")
+		}
+
 	} else {
 		//没有找到task
 		wheelLogger.Logger.WithFields(logrus.Fields{
@@ -239,11 +242,12 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 }
 func (service *TaskStorageService) RemoveFromTaskTable(tid string) bool {
 	reply, err := service.connection.Do("HDEL", service.taskTable, tid)
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		"reply": reply,
-		"err":   err,
-	}).Infoln("TaskStorageService RemoveFromTaskTable")
+
 	if err != nil {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"reply": reply,
+			"err":   err,
+		}).Infoln("TaskStorageService RemoveFromTaskTable")
 		return false
 	}
 	return true
