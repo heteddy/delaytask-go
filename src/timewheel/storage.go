@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"timewheel/tracker"
 	"encoding/json"
+	"fmt"
 )
 
 /*
@@ -60,13 +61,17 @@ func (service *TaskStorageService) startKeepAlive() {
 		for err == nil {
 			select {
 			case <-service.keepaliveTimerChan:
-				wheelLogger.Logger.WithFields(logrus.Fields{
-					"time": time.Now(),
-				}).Infoln("keep alive for subscriber!!")
 				service.connection.Send("PING", "")
 				if err = service.connection.Flush(); err != nil {
+					wheelLogger.Logger.WithFields(logrus.Fields{
+						"err":err,
+					}).Warnln("TaskStorageService error keepalive!!")
 				}
-				service.subCon.Ping("")
+				if err2:= service.subCon.Ping(""); err2 != nil {
+					wheelLogger.Logger.WithFields(logrus.Fields{
+						"err2":err2,
+					}).Warnln("TaskStorageService error keepalive!!")
+				}
 			case <-service.quitChan:
 				break loop
 			case <-service.ctx.Done():
@@ -259,11 +264,19 @@ func (service *TaskStorageService) InsertToWaitingQ(t string) bool {
 	// 把 task 放到 waitingQ中
 	toRunAt, ok := service.GetTaskToRunAt(t)
 	if !ok {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"toRunAt": toRunAt,
+			"ok":      ok,
+		}).Errorln("GetTaskToRunAt error")
 		return false
 	}
 	// task 放入 sorted waitingQ
-	_, err := service.connection.Do("ZADD", service.waitingQ, toRunAt, t)
+	reply, err := service.connection.Do("ZADD", service.waitingQ, toRunAt, t)
 	if err != nil {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"reply": reply,
+			"err":   err,
+		}).Errorln("InsertToWaitingQ error")
 		return false
 	}
 
@@ -272,11 +285,19 @@ func (service *TaskStorageService) InsertToWaitingQ(t string) bool {
 func (service *TaskStorageService) AppendToTaskTable(t string) bool {
 	taskId, ok := service.GetTaskID(t)
 	if !ok {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"taskId": taskId,
+			"ok":     ok,
+		}).Errorln("GetTaskID error")
 		return false
 	}
 	// 插入到task table中h
-	_, err := service.connection.Do("HSET", service.taskTable, taskId, t)
+	reply, err := service.connection.Do("HSET", service.taskTable, taskId, t)
 	if err != nil {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"reply": reply,
+			"err":   err,
+		}).Errorln("AppendToTaskTable error")
 		return false
 	}
 
@@ -286,8 +307,12 @@ func (service *TaskStorageService) GetTaskInfo(tid string) (string, bool) {
 
 	// 插入到task table中h
 	reply, err := service.connection.Do("HGET", service.taskTable, tid)
-
+	fmt.Println("GetTaskInfo", tid, reply, err)
 	if err != nil {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"reply": reply,
+			"err":   err,
+		}).Errorln("GetTaskInfo error")
 		return "", false
 	}
 	switch reply.(type) {
@@ -365,6 +390,10 @@ func NewTaskStorageService(ctx context.Context, url string, keepalive time.Durat
 
 	conn2, err := redis.DialURL(url, redis.DialReadTimeout(keepalive+10*time.Second),
 		redis.DialWriteTimeout(10*time.Second))
+	conn2.Send("PING", "")
+	if  err = conn2.Flush(); err!=nil {
+		fmt.Println("error in conn2",err)
+	}
 	if err != nil {
 		// 打印log 并且退出
 		return nil

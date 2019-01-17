@@ -9,7 +9,6 @@ import (
 	"time"
 	"wheelLogger"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
 )
 
 type OncePingTask struct {
@@ -30,11 +29,9 @@ func (t *OncePingTask) Run() (bool, error) {
 	}).Infoln("OncePingTask ToRunAt RunAt")
 
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	//ioutil.ReadAll(resp.Body)
 	wheelLogger.Logger.WithFields(logrus.Fields{
 		"id":   t.GetID(),
-		"body": string(body),
-		"err":  err,
 	}).Infoln("ServicePingTask Run")
 	return true, nil
 }
@@ -44,7 +41,7 @@ func (t *OncePingTask) Next() bool {
 }
 
 func main() {
-	engine := timewheel.NewEngine("1s", 10, "redis://:*****@127.0.0.1:6379/4",
+	engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
 		"messageQ", "remote-task0:")
 	engine.AddTaskCreator("OncePingTask", func(task string) wheel.Runner {
 		p := &OncePingTask{}

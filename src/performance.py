@@ -8,7 +8,7 @@ import requests
 import threading
 
 def construct_json():
-    #  延时运行
+    # delay to run
     base_time = int(time.time() + 40)
     base_id = 1000000000000000
 
@@ -37,8 +37,10 @@ def send_json_task():
     conn = redis.from_url(url="redis://:uestc12345@127.0.0.1:6379",db=4)
     # p = conn.pubsub(conn)
     generator = construct_json()
-    for i in range(0,500):
+    for i in range(0,1):
         conn.publish("remote-task0:messageQ",generator())
+
+    time.sleep(10)
 
 
 def test():
@@ -50,7 +52,7 @@ def test():
         if message:
             print(message)
 
-        sub.close()
+    sub.close()
 
 
 
