@@ -55,6 +55,29 @@ func (service *TaskStorageService) setUpConnection() {
 
 func (service *TaskStorageService) startReceive() {
 	service.wg.Add(1)
+	/*
+	for {
+		// Get a connection from a pool
+		c := pool.Get()
+		psc := redis.PubSubConn{c}
+		// Set up subscriptions
+		psc.Subscribe("service.topic"))
+
+		// While not a permanent error on the connection.
+		for c.Err() == nil {
+			switch v := psc.Receive().(type) {
+			case redis.Message:
+
+			case redis.Subscription:
+
+			case error:
+
+			}
+		}
+		c.Close()
+	}
+	*/
+
 	go func() {
 	loop:
 		for {
