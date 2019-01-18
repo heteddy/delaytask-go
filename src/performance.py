@@ -9,13 +9,14 @@ import threading
 
 def construct_json():
     # delay to run
-    base_time = int(time.time() + 40)
+    base_time = int(time.time() + 30)
     base_id = 1000000000000000
-
+    random.seed(time.time())
+    base_id += random.randint(100000,999999999)
+    print("start",base_id)
     def generate_body():
         random.seed(time.time())
-        second = random.randrange(0, 10)
-        second = 0
+        second = random.randint(0, 1)
         to_run_at = base_time + second
         to_run_str = str(to_run_at)
         nonlocal base_id
@@ -37,10 +38,9 @@ def send_json_task():
     conn = redis.from_url(url="redis://:uestc12345@127.0.0.1:6379",db=4)
     # p = conn.pubsub(conn)
     generator = construct_json()
-    for i in range(0,1):
+    for i in range(0,1000):
         conn.publish("remote-task0:messageQ",generator())
 
-    time.sleep(10)
 
 
 def test():

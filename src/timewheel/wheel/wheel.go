@@ -297,7 +297,7 @@ type TimeWheeler struct {
 }
 
 func NewTimeWheel(duration string, slot int) *TimeWheeler {
-	worker := runtime.NumCPU() * 5
+	worker := runtime.NumCPU()
 	tickerDuration, err := time.ParseDuration(duration)
 	if err != nil {
 		panic(err)

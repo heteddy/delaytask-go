@@ -4,7 +4,7 @@ import (
 	"timewheel/wheel"
 	"net/http"
 	"encoding/json"
-	//_ "net/http/pprof"
+	_ "net/http/pprof"
 	"timewheel"
 	"time"
 	"wheelLogger"
@@ -29,7 +29,6 @@ func (t *OncePingTask) Run() (bool, error) {
 	}).Infoln("OncePingTask ToRunAt RunAt")
 
 	defer resp.Body.Close()
-	//ioutil.ReadAll(resp.Body)
 	wheelLogger.Logger.WithFields(logrus.Fields{
 		"id":   t.GetID(),
 	}).Infoln("ServicePingTask Run")
@@ -54,9 +53,7 @@ func main() {
 
 	engine.Start()
 
-	//go func() {
-	//	log.Println(http.ListenAndServe("localhost:10000", nil))
-	//}()
+	http.ListenAndServe("0.0.0.0:6060", nil)
 	select {}
 	engine.Stop()
 }
