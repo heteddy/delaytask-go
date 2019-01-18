@@ -92,8 +92,44 @@ func (t *ServicePingTask) Next() bool {
 # worker数量
 目前task的go routine poll中worker数量默认为cpu核数，可以根据自身任务的特点进行修改；如果偏重io的任务，可以适当增加worker的数量
 
+#客户端代码
+```python
+def construct_json():
+    # delay to run
+    base_time = int(time.time() + 30)
+    base_id = 1000000000000000
+    random.seed(time.time())
+    base_id += random.randint(100000,999999999)
+    print("start",base_id)
+    def generate_body():
+        random.seed(time.time())
+        second = random.randint(0, 1)
+        to_run_at = base_time + second
+        to_run_str = str(to_run_at)
+        nonlocal base_id
+        base_id += 1
 
+        d =  {
+            "ID": str(base_id),
+            "Name": "OncePingTask",
+            "ToRunAt": to_run_str,
+            "ToRunAfter": "10",
+            "Timeout": "1",
+            "Url": "http://www.baidu.com"
+        }
+        return json.dumps(d)
+    return generate_body
+
+
+def send_json_task():
+    conn = redis.from_url(url="redis://:uestc12345@127.0.0.1:6379",db=4)
+    # p = conn.pubsub(conn)
+    generator = construct_json()
+    for i in range(0,1000):
+        conn.publish("remote-task0:messageQ",generator())
+```
 
 设计思路以及测试方面
 
 https://www.jianshu.com/p/805dbb5c9ac8
+
