@@ -64,23 +64,22 @@ func (t *PeriodPingTask) ToJson() string {
 
 ## 创建engine
 ```go
-    engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
-		"messageQ", "remote-task0:")
-    // 通过task的名称，创建任务；
-	engine.AddTaskCreator("OncePingTask", func(task string) wheel.Runner {
-		p := &OncePingTask{}
-		if err := json.Unmarshal([]byte(task), p); err != nil {
-		} else {
-			return p
-		}
-		return nil
-	})
+engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
+    "messageQ", "remote-task0:")
+// 通过task的名称，创建任务；
+engine.AddTaskCreator("OncePingTask", func(task string) wheel.Runner {
+    p := &OncePingTask{}
+    if err := json.Unmarshal([]byte(task), p); err != nil {
+    } else {
+        return p
+    }
+    return nil
+})
 
-	engine.Start()
+engine.Start()
 
-	select {}
-	engine.Stop()
-
+select {}
+engine.Stop()
 ```
 
 ## worker数量
@@ -160,22 +159,22 @@ def send_task():
 ## go实例化task
 ```go
 tracer := trace.NewTrace(0x222)
-	runInterval := time.Second * 50
-	toRunAt := time.Now().Add(time.Minute * 2)
-	t := &PeriodPingTask{
-		PeriodicTask: wheel.PeriodicTask{
-			Task: wheel.Task{
-				ID:      tracer.GetID().Int64(),
-				Name:    "PeriodPingTask",
-				ToRunAt: wheel.TaskTime(toRunAt),
-				Done:    0,
-				Timeout: wheel.TaskDuration(time.Second * 5),
-			},
-			Interval: wheel.TaskDuration(runInterval),
-			EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
-		},
-		Url: "http://www.baidu.com",
-	}
+runInterval := time.Second * 50
+toRunAt := time.Now().Add(time.Minute * 2)
+t := &PeriodPingTask{
+    PeriodicTask: wheel.PeriodicTask{
+        Task: wheel.Task{
+            ID:      tracer.GetID().Int64(),
+            Name:    "PeriodPingTask",
+            ToRunAt: wheel.TaskTime(toRunAt),
+            Done:    0,
+            Timeout: wheel.TaskDuration(time.Second * 5),
+        },
+        Interval: wheel.TaskDuration(runInterval),
+        EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
+    },
+    Url: "http://www.baidu.com",
+}
 ```
 
 ## 设计思路以及测试方面

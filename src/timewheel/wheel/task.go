@@ -62,11 +62,6 @@ func (t *Task) GetName() string {
 func (t *Task) GetID() int64 {
 	return t.ID
 }
-
-func (t *Task) IsDone() bool {
-	return t.Done == Completed
-}
-
 func (t *Task) GetRunAt() time.Time {
 	return time.Time(t.RunAt)
 }
@@ -129,8 +124,6 @@ func (f *taskFactory) Register(name string, creator Creator) {
 func (f *taskFactory) Create(task string) Runner {
 	taskMap := make(map[string]interface{})
 
-	wheelLogger.Logger.WithFields(logrus.Fields{
-	}).Infoln("task factory create task")
 	if err := json.Unmarshal([]byte(task), &taskMap); err != nil {
 		//todo log error
 		wheelLogger.Logger.WithFields(logrus.Fields{

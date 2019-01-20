@@ -28,10 +28,6 @@ func (w *Worker) notifyComplete(t Runner) {
 		&tracker.TaskCompleteEvent{
 			TaskId: taskID,
 		})
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		"type": t.GetType(),
-		"id":   t.GetID(),
-	}).Infoln("notifyComplete")
 }
 func (w *Worker) addPeriodTask(t Runner) {
 	if t.GetType() == PeriodTask {
@@ -65,7 +61,6 @@ func (w *Worker) runTask(t Runner) {
 			go func(t Runner, w *Worker) {
 				defer func() {
 					if err := recover(); err != nil {
-						// todo add log
 						wheelLogger.Logger.WithFields(logrus.Fields{
 							"err": err,
 						}).Errorln("run task unexpected panic，" +

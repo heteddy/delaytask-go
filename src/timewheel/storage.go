@@ -82,9 +82,6 @@ func (service *TaskStorageService) startReceive() {
 				// 重新订阅
 				service.setUpConnection()
 			case redis.Message:
-				wheelLogger.Logger.WithFields(logrus.Fields{
-					"channel": n.Channel,
-				}).Infoln("TaskStorageService receive data from redis")
 				// 自动保存到taskTable
 				tracker.Tracker.Publish(&tracker.TaskReceivedEvent{string(n.Data)})
 			case redis.Subscription:
@@ -144,11 +141,6 @@ func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duratio
 			"toSec":   toSec,
 			"err":     err,
 		}).Warnln("TaskStorageService MoveWaitingToOngoingQ ZRANGEBYSCORE error")
-	} else {
-		wheelLogger.Logger.WithFields(logrus.Fields{
-			"fromSec": fromSec,
-			"toSec":   toSec,
-		}).Infoln("load waiting ok")
 	}
 	if len(reply) > 0 {
 		ongoingArg := make([]interface{}, len(reply)+1)
@@ -192,8 +184,6 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 			}).Warnln("Lrem ongoingQ error")
 			// TODO： 如果失败把任务放到redis里面稍后重试
 		} else {
-			wheelLogger.Logger.WithFields(logrus.Fields{
-			}).Infoln("ChangeTaskToComplete ok")
 		}
 	} else {
 		//没有找到task
@@ -352,7 +342,7 @@ func (service *TaskStorageService) Publish(t string) {
 	c.Do("PUBLISH", service.topic, t)
 }
 
-func NewTaskStorageService(ctx context.Context, url string, keepalive time.Duration, topic string,
+func NewTaskStorageService(ctx context.Context, url string, topic string,
 	namePrefix string) *TaskStorageService {
 
 	pool := &redis.Pool{

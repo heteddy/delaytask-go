@@ -30,9 +30,6 @@ func (t *OncePingTask) Run() (bool, error) {
 	}).Infoln("OncePingTask ToRunAt RunAt")
 
 	defer resp.Body.Close()
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		"id": t.GetID(),
-	}).Infoln("ServicePingTask Run")
 	return true, nil
 }
 
@@ -50,7 +47,6 @@ type PeriodPingTask struct {
 }
 
 func (t *PeriodPingTask) Run() (bool, error) {
-
 	resp, err := http.Get(t.Url)
 	defer resp.Body.Close()
 	if err != nil {

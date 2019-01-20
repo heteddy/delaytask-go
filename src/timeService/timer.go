@@ -135,7 +135,7 @@ func (service *WheelTimingService) Start() {
 		}
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"time": time.Now(),
-		}).Infoln("exit timer factory!!")
+		}).Warnln("exit timer factory!!")
 		service.wg.Done()
 	}()
 }

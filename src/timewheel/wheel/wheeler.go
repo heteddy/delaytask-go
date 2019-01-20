@@ -19,15 +19,12 @@ type Serializer interface {
 type Runner interface {
 	Serializer
 	Run() (bool, error)
-	// 预计执行runner的时刻
+	// 计划执行runner的时刻
 	GetToRunAt() time.Time
 	UpdateToRunAt()
-	// 真正运行的时间
 	GetRunAt() time.Time
 	GetType() int
 	IsTaskEnd() bool
-	// 返回状态是否运行结束
-	IsDone() bool
 	GetTimeout() time.Duration
 	GetName() string
 	GetID() int64

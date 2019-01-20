@@ -161,11 +161,6 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 	toRunAt := runner.GetToRunAt()
 
 	delta := toRunAt.Sub(time.Now()) // 需要进行round计算
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		"toRunAt": toRunAt,
-		"delta":   delta,
-		"now":     time.Now(),
-	}).Infoln("AddRunner")
 	// 已经超时时间轮的一半
 	if delta.Seconds() < 0 && int64(math.Abs(delta.Seconds())) > int64(w.RoundTicks())/2 {
 		wheelLogger.Logger.WithFields(logrus.Fields{
@@ -193,15 +188,6 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			taskNode,
 			idx,
 		}
-		wheelLogger.Logger.WithFields(logrus.Fields{
-			"insert-index":      idx,
-			"currentIdx":        index,
-			"round":             taskNode.round,
-			"delta":             delta,
-			"roundDeltaSeconds": deltaSeconds,
-			"tickSeconds":       tickSeconds,
-			"taskID":            taskNode.GetID(),
-		}).Infoln("delta < w.ring.ticks")
 	case deltaSeconds > tickSeconds:
 		// 先计算需要多少轮
 		rounds := deltaSeconds / roundDurationSeconds
@@ -242,14 +228,14 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			taskNode,
 			idx,
 		}
-		wheelLogger.Logger.WithFields(logrus.Fields{
-			"insert-index":      idx,
-			"currentIdx":        index,
-			"roundFloatToInt64": taskNode.round,
-			"offset":            offset,
-			"delta":             delta,
-			"taskID":            taskNode.GetID(),
-		}).Infoln("delta > w.ring.ticks")
+		//wheelLogger.Logger.WithFields(logrus.Fields{
+		//	"insert-index":      idx,
+		//	"currentIdx":        index,
+		//	"roundFloatToInt64": taskNode.round,
+		//	"offset":            offset,
+		//	"delta":             delta,
+		//	"taskID":            taskNode.GetID(),
+		//}).Infoln("delta > w.ring.ticks")
 
 	default:
 		wheelLogger.Logger.WithFields(logrus.Fields{}).Infoln("not added?")
@@ -290,17 +276,9 @@ func (cmd *removeRunnerCommand) Execute(w *TimeWheeler) {
 
 type tickCommand struct {
 }
-
 func (cmd *tickCommand) Execute(w *TimeWheeler) {
 	w.actualTick()
 }
-
-//type listRunnersCommand struct {
-//}
-//func (cmd *listRunnersCommand) Execute(w *TimeWheeler) {
-//	w.actualListRunner()
-//}
-
 type Command interface {
 	Execute(w *TimeWheeler)
 }
@@ -313,7 +291,7 @@ type TimeWheeler struct {
 }
 
 func NewTimeWheel(duration string, slot int) *TimeWheeler {
-	worker := runtime.NumCPU()
+	worker := runtime.NumCPU() * 5
 	tickerDuration, err := time.ParseDuration(duration)
 	if tickerDuration.Seconds() < 1 {
 		wheelLogger.Logger.WithFields(logrus.Fields{
@@ -325,15 +303,10 @@ func NewTimeWheel(duration string, slot int) *TimeWheeler {
 		return nil
 	}
 
-	wheelLogger.Logger.WithFields(logrus.Fields{
-		duration: tickerDuration,
-	})
-
 	slots := make([]*Node, slot, slot)
 	for i := 0; i < len(slots); i++ {
 		slots[i] = &Node{
 			taskNodes: list.List{},
-			//wheeler:   timeWheeler,
 		}
 	}
 	wheel := &Wheel{
@@ -402,10 +375,6 @@ func (wheel *TimeWheeler) Remove(runnerID int64) {
 }
 func (wheel *TimeWheeler) actualRemove(runnerID int64) {
 	wheel.ring.RemoveRunner(runnerID)
-}
-
-func (wheel *TimeWheeler) String() string {
-	return ""
 }
 func (wheel *TimeWheeler) EventOccur() {
 	wheel.cmdChan <- &tickCommand{}

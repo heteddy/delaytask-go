@@ -72,12 +72,10 @@ func (engine *DelayTaskEngine) remove(taskID string) {
 
 func (engine *DelayTaskEngine) Start() {
 	/*
-	1.创建timewheel,
-	NewTimeWheel
+	1.创建timewheel,NewTimeWheel
 	2.创建timeservice,
 	3.创建storage service，添加回调，自动取出新发布的task，如果已经< threshold 发布到ongoingQ并添加到timewheel
 		如果> threshold则放入waitingQ，
-
 	4.创建创建定时器回调，定时从waitingQ中获取task放入ongoingQ，并且添加到timewheel中
 	5.task 触发运行，触发回调函数把task从ongoing中移除；
 	*/
@@ -125,10 +123,6 @@ func (engine *DelayTaskEngine) Start() {
 						for _, ts := range taskStr {
 							task := engine.createTask(ts)
 							if task != nil {
-								wheelLogger.Logger.WithFields(logrus.Fields{
-									"taskID":   task.GetID(),
-									"taskName": task.GetName(),
-								}).Infoln("DelayTaskEngine start:PeriodTaskLoadingEventType:create task success")
 								engine.timeWheel.Add(task)
 							} else {
 							}
@@ -176,7 +170,6 @@ func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic st
 	engine := &DelayTaskEngine{
 		timeWheel: tw,
 		Storage:   s,
-
 		factory:   wheel.NewTaskFactory(),
 		threshold: dur,
 		eventChan: make(chan tracker.Event, 5),

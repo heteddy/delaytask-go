@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 )
+
 var STARTTIME time.Time
 
 func init() {
@@ -54,8 +55,6 @@ func NewTrace(hostID uint32) RequestTrace {
 		0,
 		hostID, STARTTIME.UnixNano() / 1e6,
 	}
-	//t.setHostID(hostID)
-	//t.setStartTime()
 	return t
 }
 

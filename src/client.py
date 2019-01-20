@@ -8,7 +8,7 @@ import requests
 import threading
 
 
-base_time = int(time.time() + 30)
+base_time = int(time.time() + 40)
 
 
 def construct_once_task():
@@ -44,7 +44,7 @@ def construct_period_task():
 
     def generate_body():
         random.seed(time.time())
-        second = random.randint(0, 10)
+        second = random.randint(0, 1)
         to_run_at = base_time + second
         to_run_str = str(to_run_at)
         end_time = base_time + 600
@@ -59,7 +59,7 @@ def construct_period_task():
             "Timeout": "1", 
             "Interval":"60", # 每分钟运行
             "EndTime":end_time_str,
-            "Url": "http://www.baidu.com"
+            "Url": "http://101.132.72.222:8080/ping/"
         }
         return json.dumps(d)
     return generate_body
@@ -70,9 +70,9 @@ def send_task():
     # p = conn.pubsub(conn)
     generator_once = construct_once_task()
     generator_period = construct_period_task()
-    for i in range(1):
-        conn.publish("remote-task0:messageQ",generator_period())
     for i in range(0):
+        conn.publish("remote-task0:messageQ",generator_period())
+    for i in range(500):
         conn.publish("remote-task0:messageQ",generator_once())
 
 
