@@ -65,7 +65,6 @@ func (t *PeriodPingTask) ToJson() string {
 
 创建engine
 ```go
-
     engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
 		"messageQ", "remote-task0:")
     // 通过task的名称，创建任务；
