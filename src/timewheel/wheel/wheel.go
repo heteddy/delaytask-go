@@ -315,12 +315,12 @@ type TimeWheeler struct {
 func NewTimeWheel(duration string, slot int) *TimeWheeler {
 	worker := runtime.NumCPU()
 	tickerDuration, err := time.ParseDuration(duration)
+	if tickerDuration.Seconds() < 1 {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"duration": duration,
+		}).Fatalln("目前只支持tick为1s及其以上的任务")
+	}
 	if err != nil {
-		if tickerDuration.Seconds() < 1 {
-			wheelLogger.Logger.WithFields(logrus.Fields{
-				"duration": duration,
-			}).Fatalln("目前只支持tick为1s及其以上的任务")
-		}
 		panic(err)
 		return nil
 	}
