@@ -7,8 +7,9 @@
 1. 定时任务，执行一次；
 2. 周期性任务
 
-#例子
-任务的实现，自定义任务需要包含wheel.Task，并且实现Run()和ToJson()方法
+
+## 任务的实现
+>自定义任务需要包含wheel.Task，并且实现Run()和ToJson()方法
 ```go
 type OncePingTask struct {
 	wheel.Task
@@ -33,11 +34,9 @@ func (t *OncePingTask) ToJson() string {
 	return string(b)
 }
 
-
-
-
 ```
-周期性任务，包含wheel.PeriodicTask，设置执行的结束时间和周期interval
+## 周期性任务
+>包含wheel.PeriodicTask，设置执行的结束时间和周期interval
 
 ```go
 type PeriodPingTask struct {
@@ -63,7 +62,7 @@ func (t *PeriodPingTask) ToJson() string {
 ```
 
 
-创建engine
+## 创建engine
 ```go
     engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
 		"messageQ", "remote-task0:")
@@ -84,10 +83,12 @@ func (t *PeriodPingTask) ToJson() string {
 
 ```
 
-# worker数量
-目前task的go routine poll中worker数量默认为cpu核数，可以根据自身任务的特点进行修改；如果偏重io的任务，可以适当增加worker的数量
+## worker数量
 
-#客户端代码
+>目前task的go routine poll中worker数量默认为cpu核数，可以根据自身任务的特点进行修改；如果偏重io的任务，可以适当增加worker的数量
+
+
+## 客户端代码
 ```python
 base_time = int(time.time() + 30)
 
@@ -156,7 +157,7 @@ def send_task():
     for i in range(0):
         conn.publish("remote-task0:messageQ",generator_once())
 ```
-通过go创建task
+## go实例化task
 ```go
 tracer := trace.NewTrace(0x222)
 	runInterval := time.Second * 50
@@ -177,7 +178,6 @@ tracer := trace.NewTrace(0x222)
 	}
 ```
 
-设计思路以及测试方面
-
+## 设计思路以及测试方面
 https://www.jianshu.com/p/805dbb5c9ac8
 
