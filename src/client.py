@@ -7,9 +7,12 @@ import redis
 import requests
 import threading
 
-def construct_json():
+
+base_time = int(time.time() + 30)
+
+
+def construct_once_task():
     # delay to run
-    base_time = int(time.time() + 30)
     base_id = 1000000000000000
     random.seed(time.time())
     base_id += random.randint(100000,999999999)
@@ -33,30 +36,49 @@ def construct_json():
         return json.dumps(d)
     return generate_body
 
+def construct_period_task():
+    base_id = 2000000000000000
+    random.seed(time.time())
+    base_id += random.randint(100000,999999999)
+    print("start",base_id)
 
-def send_json_task():
+    def generate_body():
+        random.seed(time.time())
+        second = random.randint(0, 10)
+        to_run_at = base_time + second
+        to_run_str = str(to_run_at)
+        end_time = base_time + 600
+        end_time_str = str(end_time)
+        nonlocal base_id
+        base_id += 1
+
+        d =  {
+            "ID": str(base_id),
+            "Name": "PeriodPingTask",
+            "ToRunAt": to_run_str,
+            "Timeout": "1", 
+            "Interval":"60", # 每分钟运行
+            "EndTime":end_time_str,
+            "Url": "http://www.baidu.com"
+        }
+        return json.dumps(d)
+    return generate_body
+
+
+def send_task():
     conn = redis.from_url(url="redis://:uestc12345@127.0.0.1:6379",db=4)
     # p = conn.pubsub(conn)
-    generator = construct_json()
-    for i in range(0,1000):
-        conn.publish("remote-task0:messageQ",generator())
+    generator_once = construct_once_task()
+    generator_period = construct_period_task()
+    for i in range(1):
+        conn.publish("remote-task0:messageQ",generator_period())
+    for i in range(0):
+        conn.publish("remote-task0:messageQ",generator_once())
 
-
-
-def test():
-    conn = redis.from_url(url="redis://:uestc12345@127.0.0.1:6379", db=4)
-    sub = conn.pubsub()
-    p.subscribe("remote-task0:messageQ")
-    while True:
-        message = p.get_message()
-        if message:
-            print(message)
-
-    sub.close()
 
 
 
 if __name__ == "__main__":
     # t = threading.Thread(target=test,args=())
     # t.start()
-    send_json_task()
+    send_task()

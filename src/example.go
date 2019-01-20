@@ -9,6 +9,7 @@ import (
 	"time"
 	"wheelLogger"
 	"github.com/sirupsen/logrus"
+	"io/ioutil"
 )
 
 type OncePingTask struct {
@@ -30,13 +31,44 @@ func (t *OncePingTask) Run() (bool, error) {
 
 	defer resp.Body.Close()
 	wheelLogger.Logger.WithFields(logrus.Fields{
-		"id":   t.GetID(),
+		"id": t.GetID(),
 	}).Infoln("ServicePingTask Run")
 	return true, nil
 }
 
-func (t *OncePingTask) Next() bool {
-	return true
+func (t *OncePingTask) ToJson() string {
+	b, err := json.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+type PeriodPingTask struct {
+	wheel.PeriodicTask
+	Url string `json:"Url"`
+}
+
+func (t *PeriodPingTask) Run() (bool, error) {
+
+	resp, err := http.Get(t.Url)
+	defer resp.Body.Close()
+	if err != nil {
+		return false, err
+	}
+	ioutil.ReadAll(resp.Body)
+	wheelLogger.Logger.WithFields(logrus.Fields{
+		"id":  t.GetID(),
+		"err": err,
+	}).Infoln("PeriodPingTask Run")
+	return true, nil
+}
+func (t *PeriodPingTask) ToJson() string {
+	b, err := json.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func main() {
@@ -50,7 +82,31 @@ func main() {
 		}
 		return nil
 	})
-
+	engine.AddTaskCreator("PeriodPingTask", func(task string) wheel.Runner {
+		t := &PeriodPingTask{}
+		if err := json.Unmarshal([]byte(task), t); err != nil {
+			return nil
+		} else {
+			return t
+		}
+	})
+	//tracer := trace.NewTrace(0x222)
+	//runInterval := time.Second * 50
+	//toRunAt := time.Now().Add(time.Minute * 2)
+	//t := &PeriodPingTask{
+	//	PeriodicTask: wheel.PeriodicTask{
+	//		Task: wheel.Task{
+	//			ID:      tracer.GetID().Int64(),
+	//			Name:    "PeriodPingTask",
+	//			ToRunAt: wheel.TaskTime(toRunAt),
+	//			Done:    0,
+	//			Timeout: wheel.TaskDuration(time.Second * 5),
+	//		},
+	//		Interval: wheel.TaskDuration(runInterval),
+	//		EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
+	//	},
+	//	Url: "http://www.baidu.com",
+	//}
 	engine.Start()
 
 	http.ListenAndServe("0.0.0.0:6060", nil)

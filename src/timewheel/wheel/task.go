@@ -15,18 +15,7 @@ const (
 	Completed
 )
 
-const (
-	// 普通的延时任务,或者定时任务
-	FixedTime = iota
-	// 周期性任务
-	Period
-)
-
 type RunnerResult interface{}
-
-type Serializer interface {
-	ToJson() string
-}
 
 // todo 任务对外接口，实现timeout机制
 
@@ -40,8 +29,6 @@ type Task struct {
 	Name string `json:"Name"`
 	// 预计第一次运行时刻
 	ToRunAt TaskTime `json:"ToRunAt"`
-	// 收到之后判断
-	ToRunAfter TaskDuration `json:"ToRunAfter"`
 	// 耗时，如果还没有执行 为0
 	Cost TaskDuration `json:"-"`
 	// 是否已经运行完成, 可以使用sync.Atomic来修改
@@ -58,17 +45,15 @@ type Task struct {
 func (t *Task) Result() interface{} {
 	return ""
 }
-func (t *Task) ToJson() string {
-	return ""
-}
 func (t *Task) SetError(err error) {
 	t.err = err
 }
-func (t *Task) GetToRunAfter() time.Duration {
-	return time.Duration(t.ToRunAfter)
-}
+
 func (t *Task) GetToRunAt() time.Time {
 	return time.Time(t.ToRunAt)
+}
+func (t *Task) GetType() int {
+	return DelayTask
 }
 
 func (t *Task) GetName() string {
@@ -88,6 +73,12 @@ func (t *Task) GetRunAt() time.Time {
 func (t *Task) GetTimeout() time.Duration {
 	return time.Duration(t.Timeout)
 }
+func (t *Task) UpdateToRunAt() {
+}
+
+func (t *Task) IsTaskEnd() bool {
+	return true
+}
 
 // 周期性的任务
 type PeriodicTask struct {
@@ -99,8 +90,15 @@ type PeriodicTask struct {
 	EndTime TaskTime `json:"EndTime"`
 }
 
-func (t *PeriodicTask) ToJson() string {
-	return ""
+func (t *PeriodicTask) UpdateToRunAt() {
+	t.ToRunAt = TaskTime(time.Now().Add(t.Interval.ToDuration()))
+}
+func (t *PeriodicTask) IsTaskEnd() bool {
+	return time.Now().After(t.EndTime.ToTime())
+}
+
+func (t *PeriodicTask) GetType() int {
+	return PeriodTask
 }
 
 type taskFactory struct {

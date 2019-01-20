@@ -6,16 +6,26 @@ import (
 	"strings"
 )
 
+const (
+	// 普通的延时任务,或者定时任务
+	DelayTask = iota
+	// 周期性任务
+	PeriodTask
+)
+
+type Serializer interface {
+	ToJson() string
+}
 type Runner interface {
-	//Serializer
+	Serializer
 	Run() (bool, error)
-	Next() bool
 	// 预计执行runner的时刻
 	GetToRunAt() time.Time
-	//
-	GetToRunAfter() time.Duration
+	UpdateToRunAt()
 	// 真正运行的时间
 	GetRunAt() time.Time
+	GetType() int
+	IsTaskEnd() bool
 	// 返回状态是否运行结束
 	IsDone() bool
 	GetTimeout() time.Duration

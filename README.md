@@ -8,8 +8,7 @@
 2. 周期性任务
 
 #例子
-任务的实现，自定义任务需要包含wheel.Task，并且实现Run()和Next()方法
-一次性任务的next 直接返回即可
+任务的实现，自定义任务需要包含wheel.Task，并且实现Run()和ToJson()方法
 ```go
 type OncePingTask struct {
 	wheel.Task
@@ -26,43 +25,40 @@ func (t *OncePingTask) Run() (bool, error) {
 	return true, nil
 }
 
-func (t *OncePingTask) Next() bool {
-	return true
+func (t *OncePingTask) ToJson() string {
+	b, err := json.Marshal(t)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
+
+
+
+
 ```
-周期性任务，有以下2点非常重要，
-1. 判断任务是否已经达到定时结束时间，比如定时任务每10分钟执行一次；一直到2019年1月1日；2019-1-1就是EndTime
-2. 修改下次toRunAt的时间，
-3. 发布add task event
+周期性任务，包含wheel.PeriodicTask，设置执行的结束时间和周期interval
+
 ```go
-type ServicePingTask struct {
+type PeriodPingTask struct {
 	wheel.PeriodicTask
 	Url string `json:"Url"`
 }
-
-func (t *ServicePingTask) Run() (bool, error) {
+func (t *PeriodPingTask) Run() (bool, error) {
 	resp, err := http.Get(t.Url)
+	defer resp.Body.Close()
 	if err != nil {
 		return false, err
 	}
-	body, err := ioutil.ReadAll(resp.Body)
-
+	ioutil.ReadAll(resp.Body)
 	return true, nil
 }
-
-func (t *ServicePingTask) Next() bool {
-	now := time.Now()
-
-	if now.After(t.EndTime.ToTime()) {
-		return true
-	} else {
-		// 修改下次运行的时间
-		t.ToRunAt = wheel.TaskTime(time.Now().Add(t.Interval.ToDuration()))
-		tStr, _ := json.Marshal(t)
-
-		tracker.Tracker.Publish(&tracker.TaskAddEvent{string(tStr)})
+func (t *PeriodPingTask) ToJson() string {
+	b, err := json.Marshal(t)
+	if err != nil {
+		return ""
 	}
-	return true
+	return string(b)
 }
 ```
 
@@ -94,9 +90,11 @@ func (t *ServicePingTask) Next() bool {
 
 #客户端代码
 ```python
-def construct_json():
+base_time = int(time.time() + 30)
+
+
+def construct_once_task():
     # delay to run
-    base_time = int(time.time() + 30)
     base_id = 1000000000000000
     random.seed(time.time())
     base_id += random.randint(100000,999999999)
@@ -120,13 +118,64 @@ def construct_json():
         return json.dumps(d)
     return generate_body
 
+def construct_period_task():
+    base_id = 2000000000000000
+    random.seed(time.time())
+    base_id += random.randint(100000,999999999)
+    print("start",base_id)
 
-def send_json_task():
+    def generate_body():
+        random.seed(time.time())
+        second = random.randint(0, 10)
+        to_run_at = base_time + second
+        to_run_str = str(to_run_at)
+        end_time = base_time + 600
+        end_time_str = str(end_time)
+        nonlocal base_id
+        base_id += 1
+
+        d =  {
+            "ID": str(base_id),
+            "Name": "PeriodPingTask",
+            "ToRunAt": to_run_str,
+            "Timeout": "1", 
+            "Interval":"60", # 每分钟运行
+            "EndTime":end_time_str,
+            "Url": "http://www.baidu.com"
+        }
+        return json.dumps(d)
+    return generate_body
+
+
+def send_task():
     conn = redis.from_url(url="redis://:uestc12345@127.0.0.1:6379",db=4)
     # p = conn.pubsub(conn)
-    generator = construct_json()
-    for i in range(0,1000):
-        conn.publish("remote-task0:messageQ",generator())
+    generator_once = construct_once_task()
+    generator_period = construct_period_task()
+    for i in range(1):
+        conn.publish("remote-task0:messageQ",generator_period())
+    for i in range(0):
+        conn.publish("remote-task0:messageQ",generator_once())
+```
+通过go创建task
+```go
+tracer := trace.NewTrace(0x222)
+	runInterval := time.Second * 50
+	toRunAt := time.Now().Add(time.Minute * 2)
+	t := &PeriodPingTask{
+		PeriodicTask: wheel.PeriodicTask{
+			Task: wheel.Task{
+				ID:      tracer.GetID().Int64(),
+				Name:    "PeriodPingTask",
+				ToRunAt: wheel.TaskTime(toRunAt),
+				Done:    0,
+				Timeout: wheel.TaskDuration(time.Second * 5),
+			},
+			Interval: wheel.TaskDuration(runInterval),
+			EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
+		},
+		Url: "http://www.baidu.com",
+	}
 ```
 
 设计思路以及测试方面

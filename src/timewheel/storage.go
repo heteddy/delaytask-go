@@ -10,7 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"timewheel/tracker"
 	"encoding/json"
-	"fmt"
 	"errors"
 )
 
@@ -285,7 +284,7 @@ func (service *TaskStorageService) GetTaskInfo(tid string) (string, bool) {
 	defer c.Close()
 	// 插入到task table中h
 	reply, err := redis.String(c.Do("HGET", service.taskTable, tid))
-	fmt.Println("GetTaskInfo", tid, reply, err)
+
 	if err != nil {
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"reply": reply,
@@ -358,6 +357,9 @@ func NewTaskStorageService(ctx context.Context, url string, keepalive time.Durat
 			conn, err := redis.DialURL(url, redis.DialReadTimeout(10*time.Second),
 				redis.DialWriteTimeout(10*time.Second), redis.DialConnectTimeout(10*time.Second),
 			)
+			if err != nil {
+				return nil, err
+			}
 			return conn, err
 		},
 		MaxIdle:     5,

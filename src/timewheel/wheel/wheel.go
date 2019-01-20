@@ -144,11 +144,14 @@ func (w *Wheel) Tick() {
 func (w *Wheel) GetTaskInfo() string {
 	for k, v := range w.runnerMap {
 		wheelLogger.Logger.WithFields(logrus.Fields{
-			"taskID":     k,
-			"toRunAfter": v.task.GetToRunAfter(),
+			"taskID":  k,
+			"toRunAt": v.task.GetToRunAt(),
 		}).Infoln("GetTaskInfo")
 	}
 	return ""
+}
+func (w *Wheel) RoundTicks() time.Duration {
+	return time.Duration(int64(w.ticks) * w.count)
 }
 
 /*
@@ -158,9 +161,22 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 	toRunAt := runner.GetToRunAt()
 
 	delta := toRunAt.Sub(time.Now()) // 需要进行round计算
+	wheelLogger.Logger.WithFields(logrus.Fields{
+		"toRunAt":   toRunAt,
+		"delta":     delta,
+		"now": time.Now(),
+	}).Infoln("AddRunner")
+	// 已经超时时间轮的一半
+	if delta.Seconds() < 0 && int64(math.Abs(delta.Seconds())) > int64(w.RoundTicks())/2 {
+		wheelLogger.Logger.WithFields(logrus.Fields{
+			"toRunAt":   toRunAt,
+			"delta":     delta,
+			"now": time.Now(),
+		}).Errorln("AddRunner")
+		return
+	}
 	//
 	deltaSeconds := roundFloatToInt64(delta.Seconds())
-
 	tickSeconds := roundFloatToInt64(w.ticks.Seconds())
 	roundDurationSeconds := tickSeconds * w.count
 
