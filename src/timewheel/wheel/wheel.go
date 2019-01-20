@@ -146,7 +146,7 @@ func (w *Wheel) GetTaskInfo() string {
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"taskID":  k,
 			"toRunAt": v.task.GetToRunAt(),
-		}).Infoln("GetTaskInfo")
+		}).Infoln("getTaskInfo")
 	}
 	return ""
 }

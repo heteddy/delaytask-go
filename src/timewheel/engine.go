@@ -48,10 +48,11 @@ func (engine *DelayTaskEngine) addTask(t string) bool {
 	thresholdTime := time.Now().Add(engine.threshold)
 	if ok {
 		if toRunAtTime.After(thresholdTime) {
-			// 放入WaitingQ
-			engine.Storage.InsertToWaitingQ(t)
-			engine.Storage.AppendToTaskTable(t)
+			// todo 要保证顺序，添加要发生在 change complete 前面，csp
+			go engine.Storage.AddWaitingTask(t)
 		} else {
+			// todo 要保证顺序，添加要发生在 change complete 前面，csp
+			go engine.Storage.AddOngoingTask(t)
 			task := engine.createTask(t)
 			engine.timeWheel.Add(task)
 		}
@@ -65,8 +66,8 @@ func (engine *DelayTaskEngine) add(t string) {
 	engine.addTask(t)
 }
 func (engine *DelayTaskEngine) remove(taskID string) {
-	//taskID, _ := engine.Storage.GetTaskID(t)
-	engine.Storage.ChangeTaskToComplete(taskID)
+	// todo 要保证顺序 change complete 在添加之后，使用同一个goroutine
+	go engine.Storage.ChangeTaskToComplete(taskID)
 }
 
 func (engine *DelayTaskEngine) Start() {
@@ -106,7 +107,6 @@ func (engine *DelayTaskEngine) Start() {
 						}).Errorln("load ongoing task err")
 					} else {
 						for _, ts := range taskStr {
-							//taskMap, err := engine.Storage.Deserialize(ts)
 							task := engine.createTask(ts)
 							if task != nil {
 								engine.timeWheel.Add(task)
@@ -159,9 +159,6 @@ func (engine *DelayTaskEngine) HandleEvent(event tracker.Event) {
 }
 
 func (engine *DelayTaskEngine) onMessage(message string) bool {
-	// 转化为map，然后提取toRunAt，执行分发
-	// 收到消息转化为map，然后将map中的torunat取出来，
-	// 根据threshold将决定放入waitingQ还是直接创建task
 	return engine.addTask(message)
 }
 
@@ -185,7 +182,7 @@ func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic st
 		wg:        sync.WaitGroup{},
 		quit:      make(chan bool),
 	}
-	// 没一个round，取一次待执行的任务，保证每次取回来的任务round都是2
+	// 每一个round，取一次待执行的任务，保证每次取回来的任务round都是2*round time -- 3* round time
 	timeService.TimerService.GetTimer(tw.RoundDuration().String()).Register(engine)
 	tracker.Tracker.Subscribe(tracker.TaskAddEventType, engine)
 	tracker.Tracker.Subscribe(tracker.TaskCompleteEventType, engine)
