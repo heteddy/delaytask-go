@@ -162,16 +162,16 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 
 	delta := toRunAt.Sub(time.Now()) // 需要进行round计算
 	wheelLogger.Logger.WithFields(logrus.Fields{
-		"toRunAt":   toRunAt,
-		"delta":     delta,
-		"now": time.Now(),
+		"toRunAt": toRunAt,
+		"delta":   delta,
+		"now":     time.Now(),
 	}).Infoln("AddRunner")
 	// 已经超时时间轮的一半
 	if delta.Seconds() < 0 && int64(math.Abs(delta.Seconds())) > int64(w.RoundTicks())/2 {
 		wheelLogger.Logger.WithFields(logrus.Fields{
-			"toRunAt":   toRunAt,
-			"delta":     delta,
-			"now": time.Now(),
+			"toRunAt": toRunAt,
+			"delta":   delta,
+			"now":     time.Now(),
 		}).Errorln("AddRunner")
 		return
 	}
@@ -316,6 +316,11 @@ func NewTimeWheel(duration string, slot int) *TimeWheeler {
 	worker := runtime.NumCPU()
 	tickerDuration, err := time.ParseDuration(duration)
 	if err != nil {
+		if tickerDuration.Seconds() < 1 {
+			wheelLogger.Logger.WithFields(logrus.Fields{
+				"duration": duration,
+			}).Fatalln("目前只支持tick为1s及其以上的任务")
+		}
 		panic(err)
 		return nil
 	}

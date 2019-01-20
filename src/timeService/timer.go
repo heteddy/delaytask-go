@@ -150,27 +150,23 @@ func (service *WheelTimingService) Stop() {
 
 func (service *WheelTimingService) GetTimer(duration string) AbstractTimer {
 	d, err := time.ParseDuration(duration)
-
 	if err != nil {
 		//
-
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"duration": duration,
-		}).Errorln("给定的duration string错误")
-		panic("给定的duration string错误")
+		}).Fatalln("给定的duration string错误")
 	}
 	if d.Nanoseconds() < service.baseTimer.Nanoseconds() {
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"duration": duration,
-		}).Errorln("duration 精度太高")
-		panic("不能小于base精度")
+		}).Fatalln("duration 精度太高,不能小于base精度")
+
 	}
 	if d.Nanoseconds()%service.baseTimer.Nanoseconds() != 0 {
 		wheelLogger.Logger.WithFields(logrus.Fields{
 			"duration":  duration,
 			"basetimer": service.baseTimer,
-		}).Errorln("timer的精度必须是base timer的整数倍")
-		panic("timer的精度必须是base timer的整数倍")
+		}).Fatalln("timer的精度必须是base timer的整数倍")
 	}
 	service.mu.Lock()
 	defer service.mu.Unlock()

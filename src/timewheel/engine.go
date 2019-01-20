@@ -164,6 +164,7 @@ func (engine *DelayTaskEngine) onMessage(message string) bool {
 
 func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic string,
 	prefix string) *DelayTaskEngine {
+
 	tw := wheel.NewTimeWheel(duration, slot)
 
 	ctx, _ := context.WithCancel(context.Background())
