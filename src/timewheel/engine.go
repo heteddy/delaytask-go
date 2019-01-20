@@ -162,8 +162,7 @@ func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic st
 	tw := wheel.NewTimeWheel(duration, slot)
 
 	ctx, _ := context.WithCancel(context.Background())
-	s := NewTaskStorageService(ctx, subscribeUrl,
-		time.Minute, subscribeTopic, prefix)
+	s := NewTaskStorageService(ctx, subscribeUrl, subscribeTopic, prefix)
 	// 3 倍的
 	dur := time.Duration(int64(tw.RoundDuration()) * 3)
 

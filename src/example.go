@@ -10,6 +10,9 @@ import (
 	"wheelLogger"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 type OncePingTask struct {
@@ -105,7 +108,37 @@ func main() {
 	//}
 	engine.Start()
 
-	http.ListenAndServe("0.0.0.0:6060", nil)
-	select {}
-	engine.Stop()
+	go func() {
+		http.ListenAndServe("0.0.0.0:6060", nil)
+	}()
+
+	sigChan := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, syscall.SIGTSTP, syscall.SIGHUP)
+	go func() {
+		sig := <-sigChan
+		switch sig {
+		case syscall.SIGINT:
+			fallthrough
+		case syscall.SIGTERM:
+			fallthrough
+		case syscall.SIGKILL:
+			fallthrough
+		case syscall.SIGTSTP:
+			fallthrough
+		case syscall.SIGHUP:
+			wheelLogger.Logger.WithFields(logrus.Fields{
+			}).Warnln("engine will stop!!")
+			engine.Stop()
+		default:
+
+		}
+		done <- true
+		close(done)
+	}()
+	<-done
+	close(sigChan)
+
+	//select {}
+
 }
