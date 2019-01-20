@@ -59,7 +59,7 @@ def construct_period_task():
             "Timeout": "1", 
             "Interval":"60", # 每分钟运行
             "EndTime":end_time_str,
-            "Url": "http://101.132.72.222:8080/ping/"
+            "Url": "http://www.baidu.com"
         }
         return json.dumps(d)
     return generate_body
