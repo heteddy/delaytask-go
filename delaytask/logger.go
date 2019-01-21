@@ -2,17 +2,12 @@ package delaytask
 
 import (
 	"github.com/sirupsen/logrus"
-	//"io"
 	"os"
 	"time"
 	"strconv"
 	"runtime"
 	"strings"
 )
-
-type OCRLogger struct {
-	logrus.Logger
-}
 
 var Logger = logrus.New()
 
