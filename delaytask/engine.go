@@ -1,43 +1,39 @@
-package timewheel
+package delaytask
 
 import (
-	"timewheel/timeService"
-	"timewheel/wheel"
 	"time"
 	"context"
 	"sync"
-	"timewheel/tracker"
-	"wheelLogger"
 	"github.com/sirupsen/logrus"
 )
 
 type DelayTaskEngine struct {
-	timeWheel *wheel.TimeWheeler
+	timeWheel *TimeWheeler
 	Storage   *TaskStorageService
 
-	factory   wheel.Factory
+	factory   Factory
 	threshold time.Duration
-	eventChan chan tracker.Event
+	eventChan chan Event
 	wg        sync.WaitGroup
 	quit      chan bool
 }
 
-func (engine *DelayTaskEngine) createTask(task string) wheel.Runner {
+func (engine *DelayTaskEngine) createTask(task string) Runner {
 	return engine.factory.Create(task)
 }
 
-func (engine *DelayTaskEngine) AddTaskCreator(name string, creator wheel.Creator) {
+func (engine *DelayTaskEngine) AddTaskCreator(name string, creator Creator) {
 	engine.factory.Register(name, creator)
 }
 
 func (engine *DelayTaskEngine) LoadOngoingTask() {
-	ongoingTask := &tracker.TaskLoadOngoing{}
+	ongoingTask := &TaskLoadOngoing{}
 	engine.eventChan <- ongoingTask
 }
 
 func (engine *DelayTaskEngine) EventOccur() {
 	// 时间到通知，从waitingQ中获取
-	e := &tracker.TaskLoadingEvent{}
+	e := &TaskLoadingEvent{}
 	engine.eventChan <- e
 }
 
@@ -81,7 +77,7 @@ func (engine *DelayTaskEngine) Start() {
 	*/
 	engine.timeWheel.Start()
 	engine.Storage.Start()
-	timeService.TimerService.Start()
+	TimerService.Start()
 	go func() {
 		engine.wg.Add(1)
 	loop:
@@ -90,16 +86,16 @@ func (engine *DelayTaskEngine) Start() {
 			case event := <-engine.eventChan:
 				taskType := event.GetType()
 				switch taskType {
-				case tracker.TaskCompleteEventType:
+				case TaskCompleteEventType:
 					engine.remove(event.GetBody())
-				case tracker.TaskAddEventType:
+				case TaskAddEventType:
 					engine.add(event.GetBody())
-				case tracker.TaskReceivedEventType:
+				case TaskReceivedEventType:
 					engine.onMessage(event.GetBody())
-				case tracker.TaskLoadingOngoingsEventType:
+				case TaskLoadingOngoingsEventType:
 					taskStr, err := engine.Storage.LoadOngoingTask()
 					if err != nil {
-						wheelLogger.Logger.WithFields(logrus.Fields{
+						Logger.WithFields(logrus.Fields{
 							"task": taskStr,
 							"err":  err,
 						}).Errorln("load ongoing task err")
@@ -109,14 +105,14 @@ func (engine *DelayTaskEngine) Start() {
 							if task != nil {
 								engine.timeWheel.Add(task)
 							} else {
-								wheelLogger.Logger.WithFields(logrus.Fields{
+								Logger.WithFields(logrus.Fields{
 									"taskStr": taskStr,
 									"task":    task,
 								}).Errorln("DelayTaskEngine start:ASK_LOAD_ONGOING:create task error")
 							}
 						}
 					}
-				case tracker.PeriodTaskLoadingEventType:
+				case PeriodTaskLoadingEventType:
 					taskStr, err := engine.Storage.MoveWaitingToOngoingQ(engine.threshold)
 					if err != nil {
 					} else {
@@ -141,14 +137,14 @@ func (engine *DelayTaskEngine) Start() {
 }
 
 func (engine *DelayTaskEngine) Stop() {
-	timeService.TimerService.Stop()
+	TimerService.Stop()
 	engine.Storage.Stop()
 	engine.timeWheel.Stop()
 	engine.quit <- true
 	engine.wg.Wait()
 }
 
-func (engine *DelayTaskEngine) HandleEvent(event tracker.Event) {
+func (engine *DelayTaskEngine) HandleEvent(event Event) {
 	engine.eventChan <- event
 }
 
@@ -159,7 +155,7 @@ func (engine *DelayTaskEngine) onMessage(message string) bool {
 func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic string,
 	prefix string) *DelayTaskEngine {
 
-	tw := wheel.NewTimeWheel(duration, slot)
+	tw :=NewTimeWheel(duration, slot)
 
 	ctx, _ := context.WithCancel(context.Background())
 	s := NewTaskStorageService(ctx, subscribeUrl, subscribeTopic, prefix)
@@ -169,17 +165,17 @@ func NewEngine(duration string, slot int, subscribeUrl string, subscribeTopic st
 	engine := &DelayTaskEngine{
 		timeWheel: tw,
 		Storage:   s,
-		factory:   wheel.NewTaskFactory(),
+		factory:   NewTaskFactory(),
 		threshold: dur,
-		eventChan: make(chan tracker.Event, 5),
+		eventChan: make(chan Event, 5),
 		wg:        sync.WaitGroup{},
 		quit:      make(chan bool),
 	}
 	// 每一个round，取一次待执行的任务，保证每次取回来的任务round都是2*round time -- 3* round time
-	timeService.TimerService.GetTimer(tw.RoundDuration().String()).Register(engine)
-	tracker.Tracker.Subscribe(tracker.TaskAddEventType, engine)
-	tracker.Tracker.Subscribe(tracker.TaskCompleteEventType, engine)
-	tracker.Tracker.Subscribe(tracker.TaskReceivedEventType, engine)
+	TimerService.GetTimer(tw.RoundDuration().String()).Register(engine)
+	Tracker.Subscribe(TaskAddEventType, engine)
+	Tracker.Subscribe(TaskCompleteEventType, engine)
+	Tracker.Subscribe(TaskReceivedEventType, engine)
 
 	return engine
 }

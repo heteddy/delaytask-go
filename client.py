@@ -72,7 +72,7 @@ def send_task():
     generator_period = construct_period_task()
     for i in range(0):
         conn.publish("remote-task0:messageQ",generator_period())
-    for i in range(500):
+    for i in range(5):
         conn.publish("remote-task0:messageQ",generator_once())
 
 

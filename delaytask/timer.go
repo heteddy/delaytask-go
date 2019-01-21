@@ -2,13 +2,11 @@
 时间轮定时器，启动一个空的
 */
 
-package timeService
+package delaytask
 
 import (
 	"time"
-	"timewheel/observer"
 	"sync"
-	"wheelLogger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,7 +22,7 @@ func init() {
 }
 
 type AbstractTimer interface {
-	observer.Notifier
+	Notifier
 	Tick()
 }
 type TimingService interface {
@@ -39,7 +37,7 @@ type WTimer struct {
 	description string
 	// register and unregister will run in multiple goroutines
 	mu          sync.RWMutex
-	listeners   map[observer.Listener]bool
+	listeners   map[Listener]bool
 	tickerCount int64
 	index       int64
 }
@@ -59,7 +57,7 @@ func (t *WTimer) Tick() {
 	t.mu.RUnlock()
 }
 
-func (t *WTimer) Register(listener observer.Listener) bool {
+func (t *WTimer) Register(listener Listener) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// 防止重复注册
@@ -69,7 +67,7 @@ func (t *WTimer) Register(listener observer.Listener) bool {
 	}
 	return false
 }
-func (t *WTimer) Unregister(listener observer.Listener) bool {
+func (t *WTimer) Unregister(listener Listener) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if found := t.listeners[listener]; found {
@@ -133,7 +131,7 @@ func (service *WheelTimingService) Start() {
 				service.mu.RUnlock()
 			}
 		}
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"time": time.Now(),
 		}).Warnln("exit timer factory!!")
 		service.wg.Done()
@@ -152,18 +150,18 @@ func (service *WheelTimingService) GetTimer(duration string) AbstractTimer {
 	d, err := time.ParseDuration(duration)
 	if err != nil {
 		//
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"duration": duration,
 		}).Fatalln("给定的duration string错误")
 	}
 	if d.Nanoseconds() < service.baseTimer.Nanoseconds() {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"duration": duration,
 		}).Fatalln("duration 精度太高,不能小于base精度")
 
 	}
 	if d.Nanoseconds()%service.baseTimer.Nanoseconds() != 0 {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"duration":  duration,
 			"basetimer": service.baseTimer,
 		}).Fatalln("timer的精度必须是base timer的整数倍")
@@ -178,7 +176,7 @@ func (service *WheelTimingService) GetTimer(duration string) AbstractTimer {
 			interval:    d,
 			description: duration,
 			tickerCount: d.Nanoseconds() / service.baseTimer.Nanoseconds(),
-			listeners:   make(map[observer.Listener]bool),
+			listeners:   make(map[Listener]bool),
 			mu:          sync.RWMutex{},
 			index:       0,
 		}

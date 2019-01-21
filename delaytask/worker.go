@@ -1,11 +1,9 @@
-package wheel
+package delaytask
 
 import (
 	"github.com/sirupsen/logrus"
 	"time"
-	"wheelLogger"
 	"strconv"
-	"timewheel/tracker"
 	"runtime/debug"
 )
 
@@ -24,8 +22,8 @@ func NewWorker(taskChan chan Runner) *Worker {
 
 func (w *Worker) notifyComplete(t Runner) {
 	taskID := strconv.FormatInt(t.GetID(), 10)
-	tracker.Tracker.Publish(
-		&tracker.TaskCompleteEvent{
+	Tracker.Publish(
+		&TaskCompleteEvent{
 			TaskId: taskID,
 		})
 }
@@ -35,14 +33,14 @@ func (w *Worker) addPeriodTask(t Runner) {
 			t.UpdateToRunAt()
 			s := t.ToJson()
 			if len(s) > 0 {
-				tracker.Tracker.Publish(
-					&tracker.TaskAddEvent{
+				Tracker.Publish(
+					&TaskAddEvent{
 						Task: s,
 					})
 			}
 
 		} else {
-			wheelLogger.Logger.WithFields(logrus.Fields{
+			Logger.WithFields(logrus.Fields{
 				"type": t.GetType(),
 				"id":   t.GetID(),
 			}).Infoln("addPeriodTask task end!!")
@@ -61,7 +59,7 @@ func (w *Worker) runTask(t Runner) {
 			go func(t Runner, w *Worker) {
 				defer func() {
 					if err := recover(); err != nil {
-						wheelLogger.Logger.WithFields(logrus.Fields{
+						Logger.WithFields(logrus.Fields{
 							"err": err,
 						}).Errorln("run task unexpected panic，" +
 							"will not run this task again, although it is period task")
@@ -72,7 +70,7 @@ func (w *Worker) runTask(t Runner) {
 
 				_, err := t.Run()
 				if err != nil {
-					wheelLogger.Logger.WithFields(logrus.Fields{
+					Logger.WithFields(logrus.Fields{
 						"err": err,
 					}).Warnln("run task got an expected error")
 					t.SetError(err)
@@ -94,7 +92,7 @@ func (w *Worker) runTask(t Runner) {
 				// 运行超时不再添加
 				w.notifyComplete(t)
 				w.addPeriodTask(t)
-				wheelLogger.Logger.WithFields(logrus.Fields{
+				Logger.WithFields(logrus.Fields{
 					"start-time":   start.Format("2006-01-02 15:04:05.999999"),
 					"now":          time.Now().Format("2006-01-02 15:04:05.999999"),
 					"taskID":       t.GetID(),

@@ -1,13 +1,11 @@
 package main
 
 import (
-	"github.com/heteddy/delaytask-go/timewheel/wheel"
 	"net/http"
 	"encoding/json"
 	_ "net/http/pprof"
-	"timewheel"
+	"delaytask"
 	"time"
-	"wheelLogger"
 	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
@@ -16,7 +14,7 @@ import (
 )
 
 type OncePingTask struct {
-	wheel.Task
+	delaytask.Task
 	Url string `json:"Url"`
 }
 
@@ -25,8 +23,8 @@ func (t *OncePingTask) Run() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	t.RunAt = wheel.TaskTime(time.Now())
-	wheelLogger.Logger.WithFields(logrus.Fields{
+	t.RunAt = delaytask.TaskTime(time.Now())
+	delaytask.Logger.WithFields(logrus.Fields{
 		"id":      t.GetID(),
 		"RunAt":   t.GetRunAt(),
 		"ToRunAt": t.GetToRunAt(),
@@ -45,7 +43,7 @@ func (t *OncePingTask) ToJson() string {
 }
 
 type PeriodPingTask struct {
-	wheel.PeriodicTask
+	delaytask.PeriodicTask
 	Url string `json:"Url"`
 }
 
@@ -56,7 +54,7 @@ func (t *PeriodPingTask) Run() (bool, error) {
 		return false, err
 	}
 	ioutil.ReadAll(resp.Body)
-	wheelLogger.Logger.WithFields(logrus.Fields{
+	delaytask.Logger.WithFields(logrus.Fields{
 		"id":  t.GetID(),
 		"err": err,
 	}).Infoln("PeriodPingTask Run")
@@ -71,9 +69,9 @@ func (t *PeriodPingTask) ToJson() string {
 }
 
 func main() {
-	engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
+	engine := delaytask.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
 		"messageQ", "remote-task0:")
-	engine.AddTaskCreator("OncePingTask", func(task string) wheel.Runner {
+	engine.AddTaskCreator("OncePingTask", func(task string) delaytask.Runner {
 		p := &OncePingTask{}
 		if err := json.Unmarshal([]byte(task), p); err != nil {
 		} else {
@@ -81,7 +79,7 @@ func main() {
 		}
 		return nil
 	})
-	engine.AddTaskCreator("PeriodPingTask", func(task string) wheel.Runner {
+	engine.AddTaskCreator("PeriodPingTask", func(task string) delaytask.Runner {
 		t := &PeriodPingTask{}
 		if err := json.Unmarshal([]byte(task), t); err != nil {
 			return nil
@@ -127,7 +125,7 @@ func main() {
 		case syscall.SIGTSTP:
 			fallthrough
 		case syscall.SIGHUP:
-			wheelLogger.Logger.WithFields(logrus.Fields{
+			delaytask.Logger.WithFields(logrus.Fields{
 			}).Warnln("engine will stop!!")
 			engine.Stop()
 		default:

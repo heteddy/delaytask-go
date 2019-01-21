@@ -1,4 +1,4 @@
-package timewheel
+package delaytask
 
 import (
 	"context"
@@ -6,9 +6,7 @@ import (
 	"sync"
 	"time"
 	"strconv"
-	"wheelLogger"
 	"github.com/sirupsen/logrus"
-	"timewheel/tracker"
 	"encoding/json"
 	"errors"
 )
@@ -83,19 +81,19 @@ func (service *TaskStorageService) startReceive() {
 				service.setUpConnection()
 			case redis.Message:
 				// 自动保存到taskTable
-				tracker.Tracker.Publish(&tracker.TaskReceivedEvent{string(n.Data)})
+				Tracker.Publish(&TaskReceivedEvent{string(n.Data)})
 			case redis.Subscription:
 				switch n.Count {
 				case 1:
 				case 0:
 					// 结束subscribe
-					wheelLogger.Logger.WithFields(logrus.Fields{
+					Logger.WithFields(logrus.Fields{
 					}).Warnln("unsubscribe will exit!!")
 					break loop
 				}
 			}
 		}
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 		}).Warnln("TaskStorageService exit receive!!")
 
 		service.wg.Done()
@@ -136,7 +134,7 @@ func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duratio
 	defer c.Close()
 	reply, err := redis.Strings(c.Do("ZRANGEBYSCORE", service.waitingQ, fromSec, toSec))
 	if err != nil {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"fromSec": fromSec,
 			"toSec":   toSec,
 			"err":     err,
@@ -154,7 +152,7 @@ func (service *TaskStorageService) MoveWaitingToOngoingQ(toRunAfter time.Duratio
 		remErr := c.Send("ZREMRANGEBYSCORE", service.waitingQ, fromSec, toSec)
 		flushErr := c.Flush()
 		if remErr != nil || ongoingErr != nil || flushErr != nil {
-			wheelLogger.Logger.WithFields(logrus.Fields{
+			Logger.WithFields(logrus.Fields{
 				"ongoingErr": ongoingErr,
 				"remErr":     remErr,
 				"flushErr":   flushErr,
@@ -177,7 +175,7 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 		err2 := c.Send("LREM", service.ongoingQ, 0, task)
 		err3 := c.Flush()
 		if err1 != nil || err2 != nil || err3 != nil {
-			wheelLogger.Logger.WithFields(logrus.Fields{
+			Logger.WithFields(logrus.Fields{
 				"err1": err1,
 				"err2": err2,
 				"err3": err3,
@@ -187,7 +185,7 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 		}
 	} else {
 		//没有找到task
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"task": task,
 			"ok":   ok,
 		}).Warnln("not found task error")
@@ -197,7 +195,7 @@ func (service *TaskStorageService) ChangeTaskToComplete(tid string) {
 func (service *TaskStorageService) AddOngoingTask(t string) bool {
 	taskId, ok := service.GetTaskID(t)
 	if !ok {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"taskId": taskId,
 			"ok":     ok,
 		}).Errorln("GetTaskID error")
@@ -210,7 +208,7 @@ func (service *TaskStorageService) AddOngoingTask(t string) bool {
 	ongoingErr := c.Send("LPUSH", service.ongoingQ, t)
 	err2 := c.Flush()
 	if err1 != nil || ongoingErr != nil || err2 != nil {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"err1":       err1,
 			"err2":       err2,
 			"ongoingErr": ongoingErr,
@@ -224,7 +222,7 @@ func (service *TaskStorageService) AddWaitingTask(t string) bool {
 	taskId, ok := service.GetTaskID(t)
 	toRunAt, ok2 := service.GetTaskToRunAt(t)
 	if !ok || !ok2 {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"taskId":  taskId,
 			"toRunAt": toRunAt,
 			"ok":      ok,
@@ -239,7 +237,7 @@ func (service *TaskStorageService) AddWaitingTask(t string) bool {
 	err2 := c.Send("ZADD", service.waitingQ, toRunAt, t)
 	err3 := c.Flush()
 	if err1 != nil || err2 != nil || err3 != nil {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"err1": err1,
 			"err2": err2,
 			"err3": err3,
@@ -253,7 +251,7 @@ func (service *TaskStorageService) AddWaitingTask(t string) bool {
 func (service *TaskStorageService) AppendToTaskTable(t string) bool {
 	taskId, ok := service.GetTaskID(t)
 	if !ok {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"taskId": taskId,
 			"ok":     ok,
 		}).Errorln("GetTaskID error")
@@ -264,7 +262,7 @@ func (service *TaskStorageService) AppendToTaskTable(t string) bool {
 	// 插入到task table中h
 	reply, err := c.Do("HSET", service.taskTable, taskId, t)
 	if err != nil {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"reply": reply,
 			"err":   err,
 		}).Errorln("HSET taskTable error")
@@ -279,7 +277,7 @@ func (service *TaskStorageService) getTaskInfo(tid string, conn redis.Conn) (str
 	reply, err := redis.String(conn.Do("HGET", service.taskTable, tid))
 
 	if err != nil {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"reply": reply,
 			"err":   err,
 		}).Errorln("getTaskInfo error")
@@ -294,7 +292,7 @@ func (service *TaskStorageService) deserialize(t string) (map[string]interface{}
 
 	err := json.Unmarshal([]byte(t), &taskMap)
 	if err != nil {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"err": err,
 		}).Errorln("TaskStorageService deserialize error")
 	} else {
@@ -309,8 +307,7 @@ func (service *TaskStorageService) GetTaskID(t string) (taskid int64, ok bool) {
 	}
 	_taskId, found := taskMap["ID"]
 	if !found {
-		//todo log error
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"task": t,
 		}).Errorln("TaskStorageService GetTaskID no ID in task")
 		return 0, false
@@ -329,7 +326,7 @@ func (service *TaskStorageService) GetTaskToRunAt(t string) (int64, bool) {
 
 	taskToRun, found := taskMap["ToRunAt"]
 	if !found {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 		}).Errorln("GetTaskToRunAt fields error:ToRunAt")
 		return 0, false
 	}

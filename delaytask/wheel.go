@@ -1,12 +1,10 @@
-package wheel
+package delaytask
 
 import (
 	"container/list"
 	"github.com/sirupsen/logrus"
 	"math"
 	"time"
-	"wheelLogger"
-	"timewheel/timeService"
 	"runtime"
 )
 
@@ -84,7 +82,7 @@ func (n *Node) walk() {
 				node = node.Next()
 			}
 		} else {
-			wheelLogger.Logger.WithFields(logrus.Fields{}).Errorln("error convert task")
+			Logger.WithFields(logrus.Fields{}).Errorln("error convert task")
 			node = node.Next()
 		}
 		// 下一个
@@ -143,7 +141,7 @@ func (w *Wheel) Tick() {
 
 func (w *Wheel) GetTaskInfo() string {
 	for k, v := range w.runnerMap {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"taskID":  k,
 			"toRunAt": v.task.GetToRunAt(),
 		}).Infoln("getTaskInfo")
@@ -163,7 +161,7 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 	delta := toRunAt.Sub(time.Now()) // 需要进行round计算
 	// 已经超时时间轮的一半
 	if delta.Seconds() < 0 && int64(math.Abs(delta.Seconds())) > int64(w.RoundTicks())/2 {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"toRunAt": toRunAt,
 			"delta":   delta,
 			"now":     time.Now(),
@@ -209,7 +207,7 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			if rounds > 0 {
 				rounds -= 1
 			} else {
-				wheelLogger.Logger.WithFields(logrus.Fields{
+				Logger.WithFields(logrus.Fields{
 					"insert-index":      idx,
 					"currentIdx":        index,
 					"roundFloatToInt64": rounds,
@@ -228,7 +226,7 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 			taskNode,
 			idx,
 		}
-		//wheelLogger.Logger.WithFields(logrus.Fields{
+		//Logger.WithFields(logrus.Fields{
 		//	"insert-index":      idx,
 		//	"currentIdx":        index,
 		//	"roundFloatToInt64": taskNode.round,
@@ -238,7 +236,7 @@ func (w *Wheel) AddRunner(runner Runner, pool *Pool) {
 		//}).Infoln("delta > w.ring.ticks")
 
 	default:
-		wheelLogger.Logger.WithFields(logrus.Fields{}).Infoln("not added?")
+		Logger.WithFields(logrus.Fields{}).Infoln("not added?")
 	}
 }
 
@@ -284,7 +282,7 @@ type Command interface {
 }
 type TimeWheeler struct {
 	ring     *Wheel
-	ticker   timeService.AbstractTimer
+	ticker   AbstractTimer
 	pool     *Pool
 	cmdChan  chan Command
 	quitChan chan bool
@@ -294,7 +292,7 @@ func NewTimeWheel(duration string, slot int) *TimeWheeler {
 	worker := runtime.NumCPU() * 5
 	tickerDuration, err := time.ParseDuration(duration)
 	if tickerDuration.Seconds() < 1 {
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"duration": duration,
 		}).Fatalln("目前只支持tick为1s及其以上的任务")
 	}
@@ -320,7 +318,7 @@ func NewTimeWheel(duration string, slot int) *TimeWheeler {
 	// task channel 带缓冲，防阻塞Time wheeler的运行
 	taskChan := make(chan Runner, worker*2)
 	pool := NewPool(worker, taskChan)
-	factory := timeService.TimerService
+	factory := TimerService
 
 	// 创建一个timer
 	timeWheeler := &TimeWheeler{
@@ -348,7 +346,7 @@ func (wheel *TimeWheeler) Start() {
 				return
 			}
 		}
-		wheelLogger.Logger.WithFields(logrus.Fields{}).Errorln("TimeWheeler exit error")
+		Logger.WithFields(logrus.Fields{}).Errorln("TimeWheeler exit error")
 	}()
 	wheel.pool.Start()
 }

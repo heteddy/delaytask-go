@@ -1,4 +1,4 @@
-package observer
+package delaytask
 
 type Listener interface {
 	EventOccur()

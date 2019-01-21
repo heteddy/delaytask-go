@@ -1,11 +1,10 @@
-package wheel
+package delaytask
 
 import (
 	"sync"
 	"time"
 	"encoding/json"
 	"strings"
-	"wheelLogger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -126,7 +125,7 @@ func (f *taskFactory) Create(task string) Runner {
 
 	if err := json.Unmarshal([]byte(task), &taskMap); err != nil {
 		//todo log error
-		wheelLogger.Logger.WithFields(logrus.Fields{
+		Logger.WithFields(logrus.Fields{
 			"task": task,
 			"err":  err,
 		}).Errorln("taskFactory:Create:task Unmarshal error")
@@ -142,7 +141,7 @@ func (f *taskFactory) Create(task string) Runner {
 			runner := creator(task)
 			return runner
 		} else {
-			wheelLogger.Logger.WithFields(logrus.Fields{
+			Logger.WithFields(logrus.Fields{
 				"task": task,
 			}).Errorln("not found creator")
 			return nil
