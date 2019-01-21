@@ -6,7 +6,7 @@ package timeService
 
 import (
 	"time"
-	"observer"
+	"timewheel/observer"
 	"sync"
 	"wheelLogger"
 	"github.com/sirupsen/logrus"

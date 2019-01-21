@@ -108,9 +108,9 @@ func main() {
 	//}
 	engine.Start()
 
-	go func() {
-		http.ListenAndServe("0.0.0.0:6060", nil)
-	}()
+	//go func() {
+	//	http.ListenAndServe("0.0.0.0:6060", nil)
+	//}()
 
 	sigChan := make(chan os.Signal, 1)
 	done := make(chan bool, 1)

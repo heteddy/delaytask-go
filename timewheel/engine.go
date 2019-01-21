@@ -1,7 +1,7 @@
 package timewheel
 
 import (
-	"timeService"
+	"timewheel/timeService"
 	"timewheel/wheel"
 	"time"
 	"context"
