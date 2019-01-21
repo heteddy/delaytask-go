@@ -138,7 +138,4 @@ func main() {
 	}()
 	<-done
 	close(sigChan)
-
-	//select {}
-
 }
