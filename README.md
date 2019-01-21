@@ -84,7 +84,7 @@ engine.Stop()
 
 ## worker数量
 
->目前task的go routine poll中worker数量默认为cpu核数，可以根据自身任务的特点进行修改；如果偏重io的任务，可以适当增加worker的数量
+>目前task的go routine pool中worker数量默认为cpu核数，可以根据自身任务的特点进行修改；如果偏重io的任务，可以适当增加worker的数量
 
 
 ## 客户端代码
