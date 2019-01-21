@@ -1,7 +1,7 @@
 package main
 
 import (
-	"timewheel/wheel"
+	"github.com/heteddy/delaytask-go/timewheel/wheel"
 	"net/http"
 	"encoding/json"
 	_ "net/http/pprof"
