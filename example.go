@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"utils/trace"
 )
 
 type OncePingTask struct {
@@ -91,16 +92,16 @@ func main() {
 	//runInterval := time.Second * 50
 	//toRunAt := time.Now().Add(time.Minute * 2)
 	//t := &PeriodPingTask{
-	//	PeriodicTask: wheel.PeriodicTask{
-	//		Task: wheel.Task{
+	//	PeriodicTask: delaytask.PeriodicTask{
+	//		Task: delaytask.Task{
 	//			ID:      tracer.GetID().Int64(),
 	//			Name:    "PeriodPingTask",
-	//			ToRunAt: wheel.TaskTime(toRunAt),
+	//			ToRunAt: delaytask.TaskTime(toRunAt),
 	//			Done:    0,
-	//			Timeout: wheel.TaskDuration(time.Second * 5),
+	//			Timeout: delaytask.TaskDuration(time.Second * 5),
 	//		},
-	//		Interval: wheel.TaskDuration(runInterval),
-	//		EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
+	//		Interval: delaytask.TaskDuration(runInterval),
+	//		EndTime:  delaytask.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
 	//	},
 	//	Url: "http://www.baidu.com",
 	//}

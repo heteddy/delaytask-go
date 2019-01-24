@@ -12,7 +12,7 @@
 >自定义任务需要包含wheel.Task，并且实现Run()和ToJson()方法
 ```go
 type OncePingTask struct {
-	wheel.Task
+	delaytask.Task
 	Url string `json:"Url"`
 }
 
@@ -21,7 +21,13 @@ func (t *OncePingTask) Run() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	t.RunAt = wheel.TaskTime(time.Now())
+	t.RunAt = delaytask.TaskTime(time.Now())
+	delaytask.Logger.WithFields(logrus.Fields{
+		"id":      t.GetID(),
+		"RunAt":   t.GetRunAt(),
+		"ToRunAt": t.GetToRunAt(),
+	}).Infoln("OncePingTask ToRunAt RunAt")
+
 	defer resp.Body.Close()
 	return true, nil
 }
@@ -40,9 +46,10 @@ func (t *OncePingTask) ToJson() string {
 
 ```go
 type PeriodPingTask struct {
-	wheel.PeriodicTask
+	delaytask.PeriodicTask
 	Url string `json:"Url"`
 }
+
 func (t *PeriodPingTask) Run() (bool, error) {
 	resp, err := http.Get(t.Url)
 	defer resp.Body.Close()
@@ -50,6 +57,10 @@ func (t *PeriodPingTask) Run() (bool, error) {
 		return false, err
 	}
 	ioutil.ReadAll(resp.Body)
+	delaytask.Logger.WithFields(logrus.Fields{
+		"id":  t.GetID(),
+		"err": err,
+	}).Infoln("PeriodPingTask Run")
 	return true, nil
 }
 func (t *PeriodPingTask) ToJson() string {
@@ -64,22 +75,26 @@ func (t *PeriodPingTask) ToJson() string {
 
 ## 创建engine
 ```go
-engine := timewheel.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
-    "messageQ", "remote-task0:")
-// 通过task的名称，创建任务；
-engine.AddTaskCreator("OncePingTask", func(task string) wheel.Runner {
-    p := &OncePingTask{}
-    if err := json.Unmarshal([]byte(task), p); err != nil {
-    } else {
-        return p
-    }
-    return nil
-})
-
+    engine := delaytask.NewEngine("1s", 10, "redis://:uestc12345@127.0.0.1:6379/4",
+		"messageQ", "remote-task0:")
+	engine.AddTaskCreator("OncePingTask", func(task string) delaytask.Runner {
+		p := &OncePingTask{}
+		if err := json.Unmarshal([]byte(task), p); err != nil {
+		} else {
+			return p
+		}
+		return nil
+	})
+	engine.AddTaskCreator("PeriodPingTask", func(task string) delaytask.Runner {
+		t := &PeriodPingTask{}
+		if err := json.Unmarshal([]byte(task), t); err != nil {
+			return nil
+		} else {
+			return t
+		}
+	})
 engine.Start()
 
-select {}
-engine.Stop()
 ```
 
 ## worker数量
@@ -158,23 +173,23 @@ def send_task():
 ```
 ## go实例化task
 ```go
-tracer := trace.NewTrace(0x222)
-runInterval := time.Second * 50
-toRunAt := time.Now().Add(time.Minute * 2)
-t := &PeriodPingTask{
-    PeriodicTask: wheel.PeriodicTask{
-        Task: wheel.Task{
-            ID:      tracer.GetID().Int64(),
-            Name:    "PeriodPingTask",
-            ToRunAt: wheel.TaskTime(toRunAt),
-            Done:    0,
-            Timeout: wheel.TaskDuration(time.Second * 5),
-        },
-        Interval: wheel.TaskDuration(runInterval),
-        EndTime:  wheel.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
-    },
-    Url: "http://www.baidu.com",
-}
+    tracer := trace.NewTrace(0x222)
+	runInterval := time.Second * 50
+	toRunAt := time.Now().Add(time.Minute * 2)
+	t := &PeriodPingTask{
+		PeriodicTask: delaytask.PeriodicTask{
+			Task: delaytask.Task{
+				ID:      tracer.GetID().Int64(),
+				Name:    "PeriodPingTask",
+				ToRunAt: delaytask.TaskTime(toRunAt),
+				Done:    0,
+				Timeout: delaytask.TaskDuration(time.Second * 5),
+			},
+			Interval: delaytask.TaskDuration(runInterval),
+			EndTime:  delaytask.TaskTime(time.Now().Add(time.Hour * 24 * 365)),
+		},
+		Url: "http://www.baidu.com",
+	}
 ```
 
 ## 设计思路以及测试方面
